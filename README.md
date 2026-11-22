@@ -1,8 +1,27 @@
-<p align="center"><img src="public/icons/icon-192.png" width="96" alt="Curio logo"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="app-logo.png">
+    <img src="public/icons/logo-light.png" width="120" alt="Curio logo">
+  </picture>
+</p>
 
-# Curio
+<h1 align="center">Curio</h1>
 
-Short videos from every corner of human knowledge. **Always a surprise.**
+<p align="center"><strong>Shorts that make you a polymath.</strong><br>The swipe you love — minus the algorithm trap.</p>
+
+<p align="center">
+  <img src="docs/screenshots/login.png" width="720" alt="Curio sign-in page with the polymath pitch over a looping background">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/feed-desktop.png" width="520" alt="Curio feed on desktop: full-height Short, arrows and share button">
+  &nbsp;
+  <img src="docs/screenshots/feed-mobile.png" width="190" alt="Curio feed on a phone with the share button">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/polymath.png" width="520" alt="Polymath radar chart of watch time by topic">
+</p>
 
 Curio is a Shorts feed without the algorithm trap. A free GitHub Action pulls **trending YouTube Shorts across YouTube's whole topic taxonomy**; the feed jumps to a different topic on every swipe (never the same topic twice in a row, never a repeated video), serving the most-trending unseen video of each topic first. Your **Polymath** radar shows which topics you actually spend time on.
 
@@ -28,7 +47,8 @@ The Firebase project stays on the **Spark plan** (no billing account), so it can
 
 - **Ingestion** (`scripts/ingest`, GitHub Actions, twice a day): YouTube's trending chart + ~40 random topics from YouTube's own topic list per run (most-viewed Shorts of the last 14 days). Each video gets a trending score (views/hour) and its YouTube topic. `meta/topics` lists topics that have videos. Uses ~8,000 of the 10,000 free daily quota units.
 - **Feed** (`src/services/engine.ts`, `feed.ts`): shuffled cycle over available topics, no topic twice in a row, excludes queued + recently watched videos, picks the highest-scoring unseen video per topic. Keeps the current video + 10 upcoming; the next 3 are preloaded (buffered, paused).
-- **Playback**: sound on by default after the first tap (browser rule), captions off on every video.
+- **Playback**: starts instantly (muted), sound on as soon as the browser allows; captions off on every video.
+- **Share**: the share button opens the phone's share sheet (or copies the link). Links look like `https://k-692.github.io/Curio/v/<youtubeId>` and open that exact video first inside Curio, then continue the feed.
 - **Polymath** (`src/services/stats.ts`): seconds actually played per topic; the radar shows topics whose watch time is above your average watch time per video.
 
 ## Data model (Firestore)
