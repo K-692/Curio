@@ -2,7 +2,8 @@
  * Curio ingestion (runs free in GitHub Actions; YouTube key + service account stay server-side).
  *
  * Only content that teaches, shares facts or reports news is kept: YouTube categories
- * Education, Science & Technology, News & Politics and Howto & Style, in English.
+ * Education, Science & Technology and News & Politics, plus other categories only when the
+ * title/description clearly signals facts, explainers or news. English only.
  *
  * Each run:
  *  1. Trending: YouTube's most-popular chart for each of those categories (1 unit per page)
@@ -31,14 +32,14 @@ if (!KEY || !SA) {
 const TOPICS_PER_RUN = Number(process.env.TOPICS_PER_RUN || 40);
 const MAX_SECONDS = 180;
 const REGION = process.env.REGION || 'US';
-const REVALIDATE = 100;
+const REVALIDATE = 300;
 const RESET = process.env.RESET === '1';
-/** YouTube video categories that carry knowledge: Education, Science & Tech, News & Politics, Howto & Style. */
-const KNOWLEDGE_CATEGORIES = ['27', '28', '25', '26'];
+/** YouTube video categories that carry knowledge: Education, Science & Tech, News & Politics. */
+const KNOWLEDGE_CATEGORIES = ['27', '28', '25'];
 /** Search terms (OR-ed) that favour facts, explainers and news within any topic. */
 const KNOWLEDGE_QUERY = 'facts|explained|"did you know"|science|history|news|why|how';
 /** General categories (People & Blogs, Entertainment, Travel, Pets, Sports, Film, Gaming) pass only with clear knowledge signals. */
-const MIXED_CATEGORIES = ['22', '24', '19', '15', '17', '1', '20', '10', '2'];
+const MIXED_CATEGORIES = ['26', '22', '24', '19', '15', '17', '1', '20', '10', '2'];
 const KNOWLEDGE_SIGNAL = /\b(facts?|explain(ed|s|er)?|did you know|history|historical|science|scientific|news|why|how (it|they|does|do|to)|learn(ed)?|lesson|truth|myth|discover(y|ed)?|study|research|engineer(ing)?|invent(ed|ion)?|origin|secret|record|world'?s (first|largest|biggest|smallest|oldest)|physics|chemistry|biology|space|nasa|ancient|economy|psychology|brain|geography)\b/i;
 
 initializeApp({ credential: cert(JSON.parse(SA)) });
@@ -188,7 +189,8 @@ async function revalidate() {
   let removed = 0;
   for (const d of snap.docs) {
     const v = live.get(d.data().providerVideoId);
-    if (!v || !v.status?.embeddable || v.status?.privacyStatus === 'private') {
+    // Gone, no longer embeddable, or no longer passes the knowledge/English filter → remove.
+    if (!v || !eligible(v)) {
       batch.delete(d.ref);
       removed++;
     } else {
