@@ -11,19 +11,22 @@ interface Props {
   onEnded(): void;
   onSoundBlocked(): void;
   onMutedChange(muted: boolean): void;
+  /** First tap while sound is blocked: turn sound on (playback continues). */
+  onUnmute(): void;
+  onPlayingChange(playing: boolean): void;
 }
 
 /**
  * One official provider player. The feed mounts it for the active item and the next few
  * (preload window) and destroys it when the item leaves that window.
  */
-export function Player({ item, active, muted, onUnavailable, onEnded, onSoundBlocked, onMutedChange }: Props) {
+export function Player({ item, active, muted, onUnavailable, onEnded, onSoundBlocked, onMutedChange, onUnmute, onPlayingChange }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const handle = useRef<PlayerHandle | null>(null);
   const [ready, setReady] = useState(false);
   const [gesture, setGesture] = useState(false);
-  const live = useRef({ active, muted, onUnavailable, onEnded, onSoundBlocked, onMutedChange });
-  live.current = { active, muted, onUnavailable, onEnded, onSoundBlocked, onMutedChange };
+  const live = useRef({ active, muted, onUnavailable, onEnded, onSoundBlocked, onMutedChange, onPlayingChange });
+  live.current = { active, muted, onUnavailable, onEnded, onSoundBlocked, onMutedChange, onPlayingChange };
 
   useEffect(() => {
     let cancelled = false;
@@ -37,6 +40,7 @@ export function Player({ item, active, muted, onUnavailable, onEnded, onSoundBlo
           onEnded: () => !cancelled && live.current.onEnded(),
           onSoundBlocked: () => !cancelled && live.current.onSoundBlocked(),
           onMutedChange: (m) => !cancelled && live.current.active && live.current.onMutedChange(m),
+          onPlayingChange: (p) => !cancelled && live.current.active && live.current.onPlayingChange(p),
         }, { active: live.current.active, withSound: !live.current.muted }),
       )
       .then((h) => {
@@ -72,7 +76,19 @@ export function Player({ item, active, muted, onUnavailable, onEnded, onSoundBlo
       {gesture && ready && active && (
         // Transparent layer so swipes/wheel scroll the feed. It leaves the provider's top bar
         // (speaker, CC, settings) and bottom control bar uncovered so they stay clickable.
-        <button type="button" class="gesture" aria-label="Play or pause" onClick={() => handle.current?.togglePlay()} />
+        <button
+          type="button"
+          class="gesture"
+          aria-label={muted ? 'Play with sound' : 'Play or pause'}
+          onClick={() => {
+            // While muted, the tap turns sound on and keeps the video playing instead of pausing it.
+            if (muted) {
+              handle.current?.setMuted(false);
+              handle.current?.play();
+              onUnmute();
+            } else handle.current?.togglePlay();
+          }}
+        />
       )}
     </div>
   );

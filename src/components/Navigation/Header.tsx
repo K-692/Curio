@@ -47,12 +47,12 @@ function ProfileMenu({ user }: { user: User }) {
     const onHash = () => setOpen(false);
     document.addEventListener('pointerdown', onDown);
     document.addEventListener('keydown', onKey);
-    window.addEventListener('hashchange', onHash);
+    window.addEventListener('curio:navigate', onHash);
     root.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     return () => {
       document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('keydown', onKey);
-      window.removeEventListener('hashchange', onHash);
+      window.removeEventListener('curio:navigate', onHash);
     };
   }, [open]);
 

@@ -9,6 +9,8 @@ export interface PlayerEvents {
   onSoundBlocked(): void;
   /** The user muted/unmuted inside the provider's own controls. */
   onMutedChange(muted: boolean): void;
+  /** Provider playback started/stopped (used to measure real watch time). */
+  onPlayingChange(playing: boolean): void;
 }
 
 export interface PlayerHandle {
@@ -18,6 +20,7 @@ export interface PlayerHandle {
   deactivate(): void;
   setMuted(muted: boolean): void;
   togglePlay(): void;
+  play(): void;
   destroy(): void;
   /** Whether the app may overlay a gesture layer (provider exposes play/pause control). */
   readonly supportsGestureLayer: boolean;

@@ -227,10 +227,9 @@ input[aria-invalid='true'] { border-style: dashed; }
 .iconbtn.round { width: 56px; height: 56px; border-color: var(--fg); background: var(--bg); }
 .iconbtn.round svg { width: 26px; height: 26px; }
 .iconbtn.round:hover:not(:disabled) { background: var(--fg); color: var(--bg); }
-@media (max-width: 640px) {
-  .feed-controls { right: max(8px, env(safe-area-inset-right)); top: auto; bottom: calc(96px + env(safe-area-inset-bottom)); transform: none; gap: 10px; }
-  .iconbtn.round { width: 44px; height: 44px; }
-  .iconbtn.round svg { width: 22px; height: 22px; }
+/* Up/down arrows are for desktop browsers only; touch devices swipe. */
+@media (hover: none), (pointer: coarse), (max-width: 640px) {
+  .feed-controls { display: none; }
 }
 
 .slide-end { align-items: center; }

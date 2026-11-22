@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import type { User } from 'firebase/auth';
 import { signOut, deleteAccount } from '../services/auth';
 import { Logo } from './Logo';
+import { href, navigate } from '../hooks/useRoute';
 
 export function About({ user }: { user: User | null }) {
   const [confirm, setConfirm] = useState(false);
@@ -13,7 +14,7 @@ export function About({ user }: { user: User | null }) {
     setErr('');
     try {
       await deleteAccount(user);
-      location.hash = '#/';
+      navigate('feed', true);
     } catch {
       setErr('Could not delete your account. Sign in again and retry.');
       setBusy(false);
@@ -60,7 +61,7 @@ export function About({ user }: { user: User | null }) {
       <p>When you sign in with Google, Curio stores:</p>
       <ul class="bullets">
         <li>Your account ID, display name and avatar URL (from Google).</li>
-        <li>The IDs, titles and timestamps of videos you watched for at least 5 seconds — your <a href="#/history">Watched history</a>.</li>
+        <li>The IDs, titles and timestamps of videos you watched for at least 5 seconds — your <a href={href('history')}>Watched history</a>.</li>
         <li>Your feed position, so a refresh doesn't reshuffle your queue.</li>
         <li>Links you suggest, until a curator reviews them.</li>
       </ul>

@@ -36,3 +36,4 @@ export const IconGoogle = ({ size = 18 }: { size?: number }) => (
     <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z" />
   </svg>
 );
+export const IconRadar = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M12 3l8.6 6.2-3.3 10.1H6.7L3.4 9.2z" /><path d="M12 8l4 3-1.6 4.6H9.6L8 11z" /></svg>);

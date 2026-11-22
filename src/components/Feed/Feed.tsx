@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { FeedItem } from '../../app/types';
 import { loadFeedState, saveFeedState, nextBatch, rememberWatched, type FeedState } from '../../services/feed';
 import { recordWatched } from '../../services/history';
+import { createStatsBuffer } from '../../services/stats';
 import { BATCH_SIZE } from '../../services/engine';
 import { Slide } from './Slide';
-import { IconUp, IconDown, IconSoundOn, IconSoundOff, IconShuffle } from '../Icons';
+import { IconUp, IconDown, IconShuffle } from '../Icons';
 
 /** Queue thresholds (blueprint §6). */
 const REFILL_AT = 5;
@@ -35,6 +36,16 @@ export function Feed({ uid }: { uid: string }) {
   const exhausted = useRef(false);
   const watched = useRef(new Set<string>());
   const scroller = useRef<HTMLDivElement>(null);
+  const stats = useMemo(() => createStatsBuffer(uid), [uid]);
+  useEffect(() => {
+    const onHide = () => document.visibilityState === 'hidden' && stats.flush();
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      stats.flush();
+    };
+  }, [stats]);
+  const onTopicSecond = useCallback((topic: string) => stats.add(topic, 1), [stats]);
 
   itemsRef.current = items;
   activeRef.current = active;
@@ -183,7 +194,6 @@ export function Feed({ uid }: { uid: string }) {
       if (t.closest('input, textarea, select, [contenteditable]') || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === 'j') { e.preventDefault(); go(1); }
       else if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'k') { e.preventDefault(); go(-1); }
-      else if (e.key === 'm') setMuted((m) => !m);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -201,6 +211,7 @@ export function Feed({ uid }: { uid: string }) {
     };
   }, [soundBlocked]);
   const onSoundBlocked = useCallback(() => { setMuted(true); setSoundBlocked(true); }, []);
+  const unmute = useCallback(() => { setSoundBlocked(false); setMuted(false); }, []);
   const onMutedChange = useCallback((m: boolean) => {
     setMuted(m);
     if (!m) setSoundBlocked(false);
@@ -259,6 +270,8 @@ export function Feed({ uid }: { uid: string }) {
             onSkip={() => go(1)}
             onSoundBlocked={onSoundBlocked}
             onMutedChange={onMutedChange}
+            onUnmute={unmute}
+            onTopicSecond={onTopicSecond}
           />
         ))}
         {(
@@ -280,17 +293,9 @@ export function Feed({ uid }: { uid: string }) {
       </div>
       <div class="feed-controls" role="group" aria-label="Feed controls">
         <button type="button" class="iconbtn round" onClick={() => go(-1)} disabled={active === 0} aria-label="Previous video"><IconUp /></button>
-        <button type="button" class="iconbtn round" onClick={() => { setSoundBlocked(false); setMuted((m) => !m); }} aria-pressed={!muted} aria-label={muted ? 'Unmute' : 'Mute'}>
-          {muted ? <IconSoundOff /> : <IconSoundOn />}
-        </button>
         <button type="button" class="iconbtn round" onClick={() => go(1)} disabled={atEnd} aria-label="Next video"><IconDown /></button>
         <span class="sr-only" aria-live="polite">{`${upcoming} recommendations ready`}</span>
       </div>
-      {soundBlocked && muted && (
-        <button type="button" class="sound-pill" onClick={() => { setSoundBlocked(false); setMuted(false); }}>
-          <IconSoundOff size={18} /> Tap for sound
-        </button>
-      )}
       {!online && <div class="toast" role="status">Offline — playing what's already queued</div>}
       {online && refilling && upcoming < 2 && !atEnd && <div class="toast" role="status">Loading more…</div>}
     </div>

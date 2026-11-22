@@ -159,6 +159,7 @@ const youtube: ProviderAdapter = {
         mute: 1, // always start muted; sound is enabled in startActive()
         playsinline: 1,
         controls: 1,
+        fs: 0, // no fullscreen button
         rel: 0,
         loop: 1,
         playlist: item.providerVideoId,
@@ -188,6 +189,7 @@ const youtube: ProviderAdapter = {
         onStateChange: (e: { data: number }) => {
           if (destroyed) return;
           if (e.data === 0 && active) events.onEnded();
+          if (active) events.onPlayingChange(e.data === PLAYING);
           if (e.data === 2 && active && !userPaused && Date.now() < guardUntil && !player.isMuted()) fallbackMuted();
           // Preload: let it start buffering muted, then hold at the first frame.
           if (e.data === PLAYING && !active) {
@@ -218,6 +220,10 @@ const youtube: ProviderAdapter = {
         wantSound = !m;
         lastMuted = m;
         safe(() => (m ? player.mute() : player.unMute()));
+      },
+      play() {
+        userPaused = false;
+        safe(() => player.playVideo());
       },
       togglePlay() {
         safe(() => {

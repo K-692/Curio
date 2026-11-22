@@ -19,6 +19,7 @@ const instagram: ProviderAdapter = {
       done = true;
       clearTimeout(timer);
       events.onReady();
+      events.onPlayingChange(true); // no player API: count time while on screen
     };
     host.appendChild(iframe);
     return {
@@ -27,6 +28,7 @@ const instagram: ProviderAdapter = {
       deactivate() {},
       setMuted() {},
       togglePlay() {},
+      play() {},
       destroy() {
         clearTimeout(timer);
         iframe.src = 'about:blank';
