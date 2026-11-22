@@ -79,7 +79,7 @@ service cloud.firestore {
       match /state/{docId} {
         allow get, delete: if isOwner(uid);
         allow create, update: if isOwner(uid) && docId == 'feed' &&
-          request.resource.data.keys().hasOnly(['cycle','pos','exhausted','lastTopics','queue','recent','updatedAt']) &&
+          request.resource.data.keys().hasOnly(['cycle','pos','exhausted','lastTopics','queue','recent','catalogVersion','updatedAt']) &&
           request.resource.data.cycle is list && request.resource.data.cycle.size() <= 120 &&
           request.resource.data.pos is int &&
           request.resource.data.exhausted is list && request.resource.data.exhausted.size() <= 120 &&

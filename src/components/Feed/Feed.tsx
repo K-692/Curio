@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { FeedItem } from '../../app/types';
-import { loadFeedState, saveFeedState, nextBatch, rememberWatched, type FeedState } from '../../services/feed';
+import { loadFeedState, saveFeedState, nextBatch, rememberWatched, getCatalog, alignWithCatalog, type FeedState } from '../../services/feed';
 import { recordWatched } from '../../services/history';
 import { createStatsBuffer } from '../../services/stats';
 import { BATCH_SIZE } from '../../services/engine';
@@ -108,7 +108,8 @@ export function Feed({ uid }: { uid: string }) {
     setStatus((st) => (itemsRef.current.length ? st : 'loading'));
     try {
       if (!stateRef.current) {
-        const s = await loadFeedState(uid);
+        const [s, catalog] = await Promise.all([loadFeedState(uid), getCatalog()]);
+        alignWithCatalog(s, catalog.version);
         stateRef.current = s;
         const restored = s.queue.filter((i) => i && i.id && i.provider);
         itemsRef.current = restored;
@@ -153,7 +154,25 @@ export function Feed({ uid }: { uid: string }) {
       { root, threshold: [0.6] },
     );
     root.querySelectorAll('.slide').forEach((el) => io.observe(el));
-    return () => io.disconnect();
+    // Snap-position check: on phones the observer can lag behind fast swipes, so also
+    // activate the slide the feed has snapped to as soon as scrolling settles.
+    let raf = 0;
+    const snapCheck = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const h = root.clientHeight || 1;
+        const idx = Math.round(root.scrollTop / h);
+        if (Math.abs(root.scrollTop - idx * h) < h * 0.08) setActive(idx);
+      });
+    };
+    root.addEventListener('scroll', snapCheck, { passive: true });
+    root.addEventListener('scrollend', snapCheck);
+    return () => {
+      io.disconnect();
+      cancelAnimationFrame(raf);
+      root.removeEventListener('scroll', snapCheck);
+      root.removeEventListener('scrollend', snapCheck);
+    };
   }, [items.length]);
 
   // On advance: refill in background, persist pointer.

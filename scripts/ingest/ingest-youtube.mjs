@@ -1,11 +1,14 @@
 /**
  * Curio ingestion (runs free in GitHub Actions; YouTube key + service account stay server-side).
  *
+ * Only content that teaches, shares facts or reports news is kept: YouTube categories
+ * Education, Science & Technology, News & Politics and Howto & Style, in English.
+ *
  * Each run:
- *  1. Trending: YouTube's most-popular chart (1 quota unit per page) → keep Shorts (≤ 3 min),
- *     topic taken from the video's own YouTube topic details.
- *  2. Random topics from YouTube's whole topic taxonomy: for each, the most-viewed Shorts
- *     published in the last 14 days (search.list, 100 units each).
+ *  1. Trending: YouTube's most-popular chart for each of those categories (1 unit per page)
+ *     → keep Shorts (≤ 3 min); topic taken from the video's own YouTube topic details.
+ *  2. Random topics from YouTube's whole topic taxonomy: for each, the most-viewed fact /
+ *     explainer / news Shorts of the last 14 days (search.list, 100 units each).
  *  3. Every video gets a trending score = views per hour since publishing, so the feed can
  *     serve trending videos first.
  *  4. Re-checks the oldest catalogue entries and drops removed / non-embeddable ones.
@@ -29,6 +32,11 @@ const TOPICS_PER_RUN = Number(process.env.TOPICS_PER_RUN || 40);
 const MAX_SECONDS = 180;
 const REGION = process.env.REGION || 'US';
 const REVALIDATE = 100;
+const RESET = process.env.RESET === '1';
+/** YouTube video categories that carry knowledge: Education, Science & Tech, News & Politics, Howto & Style. */
+const KNOWLEDGE_CATEGORIES = ['27', '28', '25', '26'];
+/** Search terms (OR-ed) that favour facts, explainers and news within any topic. */
+const KNOWLEDGE_QUERY = 'facts|explained|"did you know"|science|history|news|why|how';
 
 initializeApp({ credential: cert(JSON.parse(SA)) });
 const db = getFirestore();
@@ -50,7 +58,16 @@ const seconds = (iso) => {
 const clean = (s, n) => String(s ?? '').replace(/\s*#\S+/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
 const rand = () => randomInt(0, 2 ** 47) / 2 ** 47;
 
+const english = (v) => {
+  const lang = (v.snippet?.defaultAudioLanguage || v.snippet?.defaultLanguage || 'en').toLowerCase();
+  const title = v.snippet?.title ?? '';
+  const latin = title.replace(/[^\p{L}]/gu, '');
+  const ascii = latin.replace(/[^A-Za-z]/g, '');
+  return lang.startsWith('en') && (latin.length === 0 || ascii.length / latin.length > 0.8);
+};
+
 const eligible = (v) =>
+  KNOWLEDGE_CATEGORIES.includes(v.snippet?.categoryId) && english(v) &&
   v.status?.embeddable && v.status?.privacyStatus === 'public' && !v.status?.madeForKids &&
   !v.contentDetails?.contentRating?.ytRating && seconds(v.contentDetails?.duration) <= MAX_SECONDS &&
   v.snippet?.liveBroadcastContent === 'none';
@@ -93,14 +110,21 @@ async function save(videos, fallbackTopic) {
 
 async function trending() {
   let added = 0;
-  let pageToken;
-  for (let page = 0; page < 4; page++) {
-    const j = await yt('videos', { part: 'snippet,contentDetails,status,statistics,topicDetails', chart: 'mostPopular', regionCode: REGION, maxResults: 50, pageToken }, 1);
-    added += await save((j.items ?? []).filter(eligible), null);
-    pageToken = j.nextPageToken;
-    if (!pageToken) break;
+  for (const cat of KNOWLEDGE_CATEGORIES) {
+    let pageToken;
+    for (let page = 0; page < 2; page++) {
+      try {
+        const j = await yt('videos', { part: 'snippet,contentDetails,status,statistics,topicDetails', chart: 'mostPopular', videoCategoryId: cat, regionCode: REGION, maxResults: 50, pageToken }, 1);
+        added += await save((j.items ?? []).filter(eligible), null);
+        pageToken = j.nextPageToken;
+        if (!pageToken) break;
+      } catch (e) {
+        console.warn(`chart ${cat}: ${e.message}`);
+        break;
+      }
+    }
   }
-  console.log(`trending chart: +${added}`);
+  console.log(`trending charts: +${added}`);
   return added;
 }
 
@@ -111,7 +135,7 @@ async function byTopic() {
   for (const t of picks) {
     try {
       const s = await yt('search', {
-        part: 'id', type: 'video', topicId: t.id, videoDuration: 'short', videoEmbeddable: 'true',
+        part: 'id', type: 'video', topicId: t.id, q: KNOWLEDGE_QUERY, videoDuration: 'short', videoEmbeddable: 'true',
         safeSearch: 'strict', order: 'viewCount', publishedAfter: since, maxResults: 25, regionCode: REGION, relevanceLanguage: 'en',
       }, 100);
       const ids = (s.items ?? []).map((i) => i.id?.videoId).filter(Boolean);
@@ -145,6 +169,19 @@ async function revalidate() {
   return removed;
 }
 
+async function wipeCatalogue() {
+  let n = 0;
+  for (;;) {
+    const snap = await db.collection('videos').limit(400).get();
+    if (snap.empty) break;
+    const b = db.batch();
+    snap.docs.forEach((d) => b.delete(d.ref));
+    await b.commit();
+    n += snap.size;
+  }
+  console.log(`reset: removed ${n} old videos`);
+}
+
 async function rebuildTopicIndex() {
   const topics = {};
   for (const t of YOUTUBE_TOPICS) {
@@ -152,13 +189,17 @@ async function rebuildTopicIndex() {
     const count = c.data().count;
     if (count > 0) topics[t.slug] = { name: t.name, count };
   }
-  await db.doc('meta/topics').set({ topics, updatedAt: FieldValue.serverTimestamp() });
+  // `version` changes only on a reset, telling apps to drop queues built from the old catalogue.
+  const prev = (await db.doc('meta/topics').get()).data();
+  const version = RESET || !prev?.version ? Date.now() : prev.version;
+  await db.doc('meta/topics').set({ topics, version, updatedAt: FieldValue.serverTimestamp() });
   return Object.keys(topics).length;
 }
 
 const run = db.collection('ingestionRuns').doc();
 await run.set({ provider: 'youtube', startedAt: FieldValue.serverTimestamp(), status: 'running' });
 try {
+  if (RESET) await wipeCatalogue();
   const t = await trending();
   const a = await byTopic();
   const removed = await revalidate();

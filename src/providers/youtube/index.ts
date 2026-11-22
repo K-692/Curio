@@ -126,42 +126,48 @@ const youtube: ProviderAdapter = {
       }
     };
 
+    let pendingUnmute = false;
+
+    /**
+     * Start instantly: muted playback is always allowed (also on mobile), so play muted first,
+     * then switch sound on as soon as playback is confirmed. Waiting for an unmuted start made
+     * phones sit on a paused frame for seconds after every swipe.
+     */
     const startActive = () =>
       safe(() => {
         clearTimeout(blockTimer);
-        player.seekTo(0, true);
         userPaused = false;
         captionsOff = true;
         hideCaptions();
         settleUntil = Date.now() + 2500;
-        if (wantSound && !soundAllowedNow()) {
-          player.mute();
-          player.playVideo();
-          lastMuted = true;
-          events.onSoundBlocked();
-          watchMute();
-          return;
-        }
-        if (wantSound) player.unMute();
-        else player.mute();
+        player.mute();
+        lastMuted = true;
+        player.seekTo(0, true);
         player.playVideo();
-        lastMuted = !wantSound;
+        pendingUnmute = wantSound && soundAllowedNow();
+        if (wantSound && !pendingUnmute) events.onSoundBlocked();
         watchMute();
-        if (!wantSound) return;
-        // If the browser still refused to start with sound, retry once, then fall back to muted.
+        // Safety net: nudge again if the player hasn't started.
         blockTimer = window.setTimeout(() => {
           safe(() => {
             const st = player.getPlayerState();
-            if (st === PLAYING || st === BUFFERING || userPaused) return;
-            player.playVideo();
-            blockTimer = window.setTimeout(() => {
-              safe(() => {
-                const st2 = player.getPlayerState();
-                if (st2 !== PLAYING && st2 !== BUFFERING && !userPaused) fallbackMuted();
-              });
-            }, 1500);
+            if (st !== PLAYING && st !== BUFFERING && !userPaused) player.playVideo();
           });
-        }, 2000);
+        }, 1200);
+      });
+
+    const applySound = () =>
+      safe(() => {
+        pendingUnmute = false;
+        player.unMute();
+        lastMuted = false;
+        settleUntil = Date.now() + 1500;
+        // Some mobile browsers pause the video when it gains sound without a gesture: revert to muted.
+        window.setTimeout(() => {
+          safe(() => {
+            if (active && player.getPlayerState() !== PLAYING && player.getPlayerState() !== BUFFERING && !userPaused) fallbackMuted();
+          });
+        }, 700);
       });
 
     const player = new YT.Player(el, {
@@ -206,7 +212,7 @@ const youtube: ProviderAdapter = {
               hideCaptions();
               window.setTimeout(() => { captionsOff = false; }, 1500);
             }
-            if (wantSound && player.isMuted() && Date.now() < settleUntil) player.unMute();
+            if (pendingUnmute) applySound();
           }
           // Preload: let it start buffering muted, then hold at the first frame.
           if (e.data === PLAYING && !active) {
