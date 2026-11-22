@@ -337,7 +337,6 @@ export function Feed({ uid }: { uid: string }) {
       <div class="feed-controls" role="group" aria-label="Feed controls">
         <button type="button" class="iconbtn round" onClick={() => go(-1)} disabled={active === 0} aria-label="Previous video"><IconUp /></button>
         <button type="button" class="iconbtn round" onClick={() => go(1)} disabled={atEnd} aria-label="Next video"><IconDown /></button>
-        <button type="button" class="iconbtn round" onClick={onShare} disabled={atEnd} aria-label="Share this video"><IconShare /></button>
         <span class="sr-only" aria-live="polite">{`${upcoming} recommendations ready`}</span>
       </div>
       {!atEnd && (
