@@ -4,7 +4,7 @@ import { href, type Route } from '../../hooks/useRoute';
 import type { useTheme } from '../../hooks/useTheme';
 import { signOut } from '../../services/auth';
 import { Logo } from '../Logo';
-import { IconHistory, IconPlus, IconShield, IconSun, IconMoon, IconInfo } from '../Icons';
+import { IconHistory, IconSun, IconMoon, IconInfo } from '../Icons';
 
 interface Props {
   route: Route;
@@ -14,7 +14,7 @@ interface Props {
 }
 
 /** Minimal header: brand on the left, theme + profile on the right. No bar, no tabs. */
-export function Header({ route, theme, user, isAdmin }: Props) {
+export function Header({ route, theme, user }: Props) {
   return (
     <header class={`topbar${route === 'feed' ? ' over-feed' : ''}`}>
       <a class="brand" href={href('feed')} aria-label="Curio — back to the feed">
@@ -25,7 +25,7 @@ export function Header({ route, theme, user, isAdmin }: Props) {
         <button type="button" class="iconbtn" onClick={theme.toggle} aria-label={theme.dark ? 'Switch to light mode' : 'Switch to dark mode'} title={theme.dark ? 'Light mode' : 'Dark mode'}>
           {theme.dark ? <IconSun /> : <IconMoon />}
         </button>
-        {user ? <ProfileMenu user={user} isAdmin={!!isAdmin} /> : (
+        {user ? <ProfileMenu user={user} /> : (
           <a href={href('about')} class="iconbtn" aria-label="About Curio"><IconInfo /></a>
         )}
       </div>
@@ -33,7 +33,7 @@ export function Header({ route, theme, user, isAdmin }: Props) {
   );
 }
 
-function ProfileMenu({ user, isAdmin }: { user: User; isAdmin: boolean }) {
+function ProfileMenu({ user }: { user: User }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
@@ -76,8 +76,6 @@ function ProfileMenu({ user, isAdmin }: { user: User; isAdmin: boolean }) {
             <span class="muted">{user.email}</span>
           </div>
           <a role="menuitem" href={href('history')}><IconHistory size={18} /> Watched history</a>
-          <a role="menuitem" href={href('add')}><IconPlus size={18} /> Suggest a video</a>
-          {isAdmin && <a role="menuitem" href={href('admin')}><IconShield size={18} /> Curate</a>}
           <a role="menuitem" href={href('about')}><IconInfo size={18} /> About & privacy</a>
           <button role="menuitem" type="button" onClick={() => signOut()}>Sign out</button>
         </div>

@@ -4,9 +4,9 @@ import { topicName } from '../../app/topics';
 import { getHistoryPage, deleteHistoryItem, clearAllHistory, type HistoryCursor } from '../../services/history';
 import { loadFeedState, saveFeedState } from '../../services/feed';
 import { providerLabel } from '../Feed/Slide';
-import { IconExternal, IconTrash } from '../Icons';
+import { IconTrash } from '../Icons';
 
-const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+const fmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 export function History({ uid }: { uid: string }) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
@@ -84,22 +84,18 @@ export function History({ uid }: { uid: string }) {
       <div class="sr-only" aria-live="polite">{msg}</div>
       {err && <p class="error" role="alert">{err}</p>}
       {!loading && !entries.length && !err && <p class="empty">Nothing yet. Videos you watch for 5 seconds or more show up here.</p>}
-      <ul class="hlist">
+      <ul class="hgrid">
         {entries.map((e) => (
-          <li key={e.id} class="hitem">
-            <a href={e.canonicalUrl} target="_blank" rel="noopener noreferrer" class="hthumb" aria-label={`Open “${e.title}” on ${providerLabel(e.provider)} (new tab)`}>
-              {e.thumbnailUrl ? <img src={e.thumbnailUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span>{providerLabel(e.provider)}</span>}
+          <li key={e.id} class="hcard">
+            <a href={e.canonicalUrl} target="_blank" rel="noopener noreferrer" class="hcard-link" aria-label={`${e.title} — open on ${providerLabel(e.provider)} (new tab)`}>
+              {e.thumbnailUrl ? <img src={e.thumbnailUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span class="hcard-blank">{providerLabel(e.provider)}</span>}
+              <span class="hcard-info">
+                <span class="hcard-topic">{topicName(e.topic)}</span>
+                <span class="hcard-title">{e.title}</span>
+                {e.watchedAt && <time class="hcard-time" dateTime={e.watchedAt.toISOString()}>{fmt.format(e.watchedAt)}</time>}
+              </span>
             </a>
-            <div class="hbody">
-              <span class="chip">{topicName(e.topic)}</span>
-              <a href={e.canonicalUrl} target="_blank" rel="noopener noreferrer" class="htitle">{e.title} <IconExternal size={14} /></a>
-              <p class="vsub">
-                {e.creatorName && <span>{e.creatorName}</span>}
-                <span>{providerLabel(e.provider)}</span>
-                {e.watchedAt && <time dateTime={e.watchedAt.toISOString()}>{fmt.format(e.watchedAt)}</time>}
-              </p>
-            </div>
-            <button type="button" class="iconbtn" onClick={() => remove(e.id, e.title)} aria-label={`Remove “${e.title}” from history`}><IconTrash size={18} /></button>
+            <button type="button" class="hcard-remove" onClick={() => remove(e.id, e.title)} aria-label={`Remove “${e.title}” from history`}><IconTrash size={16} /></button>
           </li>
         ))}
       </ul>

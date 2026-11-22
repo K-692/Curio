@@ -7,6 +7,8 @@ export interface PlayerEvents {
   onEnded(): void;
   /** The browser refused to start playback with sound; playing muted instead. */
   onSoundBlocked(): void;
+  /** The user muted/unmuted inside the provider's own controls. */
+  onMutedChange(muted: boolean): void;
 }
 
 export interface PlayerHandle {

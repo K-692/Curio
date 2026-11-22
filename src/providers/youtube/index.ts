@@ -10,6 +10,7 @@ interface YTPlayer {
   unMute(): void;
   isMuted(): boolean;
   getPlayerState(): number;
+  unloadModule(name: string): void;
 }
 interface YTNamespace {
   Player: new (el: HTMLElement, opts: unknown) => YTPlayer;
@@ -51,6 +52,18 @@ const ERRORS: Record<number, string> = {
   150: 'The creator does not allow embedding',
 };
 
+/**
+ * Browsers only allow autoplay *with sound* after the user has interacted with the page
+ * (or for installed apps / sites with high media engagement). Without that, start muted
+ * straight away instead of stalling on a blocked play.
+ */
+function soundAllowedNow(): boolean {
+  const ua = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
+  if (!ua) return true; // unknown: try, the guard below falls back to muted
+  if (ua.hasBeenActive) return true;
+  return window.matchMedia?.('(display-mode: standalone)').matches ?? false;
+}
+
 const PLAYING = 1;
 const BUFFERING = 3;
 
@@ -68,6 +81,24 @@ const youtube: ProviderAdapter = {
     let blockTimer: number | undefined;
     let guardUntil = 0; // window after an unmuted start in which an unexpected pause means "blocked"
     let userPaused = false;
+    let captionsHandled = false;
+    let lastMuted: boolean | null = null;
+    let muteWatch: number | undefined;
+
+    // Mirror mute changes made with YouTube's own speaker button back to the app.
+    const watchMute = () => {
+      clearInterval(muteWatch);
+      muteWatch = window.setInterval(() => {
+        if (!active) return;
+        safe(() => {
+          const m = player.isMuted();
+          if (m !== lastMuted) {
+            lastMuted = m;
+            events.onMutedChange(m);
+          }
+        });
+      }, 700);
+    };
 
     const fallbackMuted = () =>
       safe(() => {
@@ -75,6 +106,7 @@ const youtube: ProviderAdapter = {
         clearTimeout(blockTimer);
         player.mute();
         player.playVideo();
+        lastMuted = true;
         events.onSoundBlocked();
       });
 
@@ -91,10 +123,20 @@ const youtube: ProviderAdapter = {
       safe(() => {
         clearTimeout(blockTimer);
         player.seekTo(0, true);
+        userPaused = false;
+        if (wantSound && !soundAllowedNow()) {
+          player.mute();
+          player.playVideo();
+          lastMuted = true;
+          events.onSoundBlocked();
+          watchMute();
+          return;
+        }
         if (wantSound) player.unMute();
         else player.mute();
         player.playVideo();
-        userPaused = false;
+        lastMuted = !wantSound;
+        watchMute();
         if (!wantSound) return;
         // Browsers refuse unmuted autoplay until the user has interacted with the page:
         // the player then pauses itself or never starts. Fall back to muted playback.
@@ -120,6 +162,8 @@ const youtube: ProviderAdapter = {
         rel: 0,
         loop: 1,
         playlist: item.providerVideoId,
+        cc_load_policy: 0,
+        iv_load_policy: 3,
         origin: location.origin,
       },
       events: {
@@ -129,6 +173,16 @@ const youtube: ProviderAdapter = {
           if (active) startActive();
           else safe(() => { player.mute(); player.playVideo(); });
           events.onReady();
+        },
+        // Captions off by default: drop the captions module the first time it loads.
+        // Later loads (the user pressing CC) are left alone.
+        onApiChange: () => {
+          if (captionsHandled) return;
+          captionsHandled = true;
+          safe(() => {
+            player.unloadModule('captions');
+            player.unloadModule('cc');
+          });
         },
         onError: (e: { data: number }) => !destroyed && events.onUnavailable(ERRORS[e.data] ?? 'Video unavailable'),
         onStateChange: (e: { data: number }) => {
@@ -154,6 +208,7 @@ const youtube: ProviderAdapter = {
       deactivate() {
         active = false;
         clearTimeout(blockTimer);
+        clearInterval(muteWatch);
         safe(() => {
           player.mute();
           if (primed) player.pauseVideo();
@@ -161,6 +216,7 @@ const youtube: ProviderAdapter = {
       },
       setMuted(m) {
         wantSound = !m;
+        lastMuted = m;
         safe(() => (m ? player.mute() : player.unMute()));
       },
       togglePlay() {
@@ -177,6 +233,7 @@ const youtube: ProviderAdapter = {
       destroy() {
         destroyed = true;
         clearTimeout(blockTimer);
+        clearInterval(muteWatch);
         try {
           player.destroy();
         } catch {

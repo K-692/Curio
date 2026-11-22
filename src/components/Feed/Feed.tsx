@@ -201,6 +201,10 @@ export function Feed({ uid }: { uid: string }) {
     };
   }, [soundBlocked]);
   const onSoundBlocked = useCallback(() => { setMuted(true); setSoundBlocked(true); }, []);
+  const onMutedChange = useCallback((m: boolean) => {
+    setMuted(m);
+    if (!m) setSoundBlocked(false);
+  }, []);
 
   const onWatched = useCallback((item: FeedItem, seconds: number) => {
     if (watched.current.has(item.id)) return;
@@ -254,6 +258,7 @@ export function Feed({ uid }: { uid: string }) {
             onWatched={onWatched}
             onSkip={() => go(1)}
             onSoundBlocked={onSoundBlocked}
+            onMutedChange={onMutedChange}
           />
         ))}
         {(

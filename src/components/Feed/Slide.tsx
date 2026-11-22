@@ -15,11 +15,12 @@ interface Props {
   onWatched(item: FeedItem, seconds: number): void;
   onSkip(): void;
   onSoundBlocked(): void;
+  onMutedChange(muted: boolean): void;
 }
 
 export const providerLabel = (p: FeedItem['provider']) => (p === 'youtube' ? 'YouTube' : 'Instagram');
 
-export function Slide({ item, index, total, active, preload, muted, onWatched, onSkip, onSoundBlocked }: Props) {
+export function Slide({ item, index, total, active, preload, muted, onWatched, onSkip, onSoundBlocked, onMutedChange }: Props) {
   const [unavailable, setUnavailable] = useState<string | null>(null);
   const seconds = useRef(0);
 
@@ -47,7 +48,7 @@ export function Slide({ item, index, total, active, preload, muted, onWatched, o
             <button type="button" class="btn btn-ghost" onClick={onSkip}>Skip</button>
           </div>
         ) : active || preload ? (
-          <Player item={item} active={active} muted={muted} onUnavailable={setUnavailable} onEnded={() => onWatched(item, seconds.current)} onSoundBlocked={onSoundBlocked} />
+          <Player item={item} active={active} muted={muted} onUnavailable={setUnavailable} onEnded={() => onWatched(item, seconds.current)} onSoundBlocked={onSoundBlocked} onMutedChange={onMutedChange} />
         ) : item.thumbnailUrl ? (
           <img class="poster" src={item.thumbnailUrl} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" />
         ) : (

@@ -10,19 +10,20 @@ interface Props {
   onUnavailable(reason: string): void;
   onEnded(): void;
   onSoundBlocked(): void;
+  onMutedChange(muted: boolean): void;
 }
 
 /**
  * One official provider player. The feed mounts it for the active item and the next few
  * (preload window) and destroys it when the item leaves that window.
  */
-export function Player({ item, active, muted, onUnavailable, onEnded, onSoundBlocked }: Props) {
+export function Player({ item, active, muted, onUnavailable, onEnded, onSoundBlocked, onMutedChange }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const handle = useRef<PlayerHandle | null>(null);
   const [ready, setReady] = useState(false);
   const [gesture, setGesture] = useState(false);
-  const live = useRef({ active, muted, onUnavailable, onEnded, onSoundBlocked });
-  live.current = { active, muted, onUnavailable, onEnded, onSoundBlocked };
+  const live = useRef({ active, muted, onUnavailable, onEnded, onSoundBlocked, onMutedChange });
+  live.current = { active, muted, onUnavailable, onEnded, onSoundBlocked, onMutedChange };
 
   useEffect(() => {
     let cancelled = false;
@@ -35,6 +36,7 @@ export function Player({ item, active, muted, onUnavailable, onEnded, onSoundBlo
           onUnavailable: (r) => !cancelled && live.current.onUnavailable(r),
           onEnded: () => !cancelled && live.current.onEnded(),
           onSoundBlocked: () => !cancelled && live.current.onSoundBlocked(),
+          onMutedChange: (m) => !cancelled && live.current.active && live.current.onMutedChange(m),
         }, { active: live.current.active, withSound: !live.current.muted }),
       )
       .then((h) => {
@@ -68,7 +70,8 @@ export function Player({ item, active, muted, onUnavailable, onEnded, onSoundBlo
       {!ready && active && <div class="spinner" role="status"><span class="sr-only">Loading video</span></div>}
       <div class="player-host" ref={host} aria-hidden={active ? undefined : 'true'} />
       {gesture && ready && active && (
-        // Transparent layer so swipes/wheel scroll the feed; leaves the provider's control bar uncovered.
+        // Transparent layer so swipes/wheel scroll the feed. It leaves the provider's top bar
+        // (speaker, CC, settings) and bottom control bar uncovered so they stay clickable.
         <button type="button" class="gesture" aria-label="Play or pause" onClick={() => handle.current?.togglePlay()} />
       )}
     </div>
