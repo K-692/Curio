@@ -48,7 +48,7 @@ const seconds = (iso) => {
   return m ? (+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3] || 0) * 60 + (+m[4] || 0) : Infinity;
 };
 const clean = (s, n) => String(s ?? '').replace(/\s*#\S+/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
-const rand = () => randomInt(0, 2 ** 48) / 2 ** 48;
+const rand = () => randomInt(0, 2 ** 47) / 2 ** 47;
 
 const eligible = (v) =>
   v.status?.embeddable && v.status?.privacyStatus === 'public' && !v.status?.madeForKids &&
