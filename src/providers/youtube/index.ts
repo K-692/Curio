@@ -5,8 +5,10 @@ interface YTPlayer {
   destroy(): void;
   playVideo(): void;
   pauseVideo(): void;
+  seekTo(s: number, allowSeekAhead: boolean): void;
   mute(): void;
   unMute(): void;
+  isMuted(): boolean;
   getPlayerState(): number;
 }
 interface YTNamespace {
@@ -49,12 +51,62 @@ const ERRORS: Record<number, string> = {
   150: 'The creator does not allow embedding',
 };
 
+const PLAYING = 1;
+const BUFFERING = 3;
+
 const youtube: ProviderAdapter = {
-  async mount(host, item, events, { muted }) {
+  async mount(host, item, events, opts) {
     const YT = await loadApi();
     const el = document.createElement('div');
     host.appendChild(el);
+
     let destroyed = false;
+    let ready = false;
+    let active = opts.active;
+    let wantSound = opts.withSound;
+    let primed = false; // preload: paused once buffering has started
+    let blockTimer: number | undefined;
+    let guardUntil = 0; // window after an unmuted start in which an unexpected pause means "blocked"
+    let userPaused = false;
+
+    const fallbackMuted = () =>
+      safe(() => {
+        guardUntil = 0;
+        clearTimeout(blockTimer);
+        player.mute();
+        player.playVideo();
+        events.onSoundBlocked();
+      });
+
+    const safe = (fn: () => void) => {
+      if (destroyed || !ready) return;
+      try {
+        fn();
+      } catch {
+        /* player went away */
+      }
+    };
+
+    const startActive = () =>
+      safe(() => {
+        clearTimeout(blockTimer);
+        player.seekTo(0, true);
+        if (wantSound) player.unMute();
+        else player.mute();
+        player.playVideo();
+        userPaused = false;
+        if (!wantSound) return;
+        // Browsers refuse unmuted autoplay until the user has interacted with the page:
+        // the player then pauses itself or never starts. Fall back to muted playback.
+        guardUntil = Date.now() + 3000;
+        blockTimer = window.setTimeout(() => {
+          safe(() => {
+            const st = player.getPlayerState();
+            if (st !== PLAYING && st !== BUFFERING && !userPaused) fallbackMuted();
+          });
+        }, 2000);
+      });
+
     const player = new YT.Player(el, {
       host: 'https://www.youtube-nocookie.com',
       videoId: item.providerVideoId,
@@ -62,57 +114,75 @@ const youtube: ProviderAdapter = {
       height: '100%',
       playerVars: {
         autoplay: 1,
-        mute: muted ? 1 : 0,
+        mute: 1, // always start muted; sound is enabled in startActive()
         playsinline: 1,
         controls: 1,
         rel: 0,
         loop: 1,
         playlist: item.providerVideoId,
-        cc_load_policy: 1,
         origin: location.origin,
       },
       events: {
         onReady: () => {
           if (destroyed) return;
-          if (muted) player.mute();
-          player.playVideo();
+          ready = true;
+          if (active) startActive();
+          else safe(() => { player.mute(); player.playVideo(); });
           events.onReady();
         },
         onError: (e: { data: number }) => !destroyed && events.onUnavailable(ERRORS[e.data] ?? 'Video unavailable'),
         onStateChange: (e: { data: number }) => {
           if (destroyed) return;
-          if (e.data === 0) events.onEnded();
-          if (e.data === 1) events.onPlayingChange?.(true);
-          if (e.data === 2) events.onPlayingChange?.(false);
+          if (e.data === 0 && active) events.onEnded();
+          if (e.data === 2 && active && !userPaused && Date.now() < guardUntil && !player.isMuted()) fallbackMuted();
+          // Preload: let it start buffering muted, then hold at the first frame.
+          if (e.data === PLAYING && !active) {
+            primed = true;
+            safe(() => player.pauseVideo());
+          }
         },
       },
     });
+
     const handle: PlayerHandle = {
       supportsGestureLayer: true,
+      activate(withSound) {
+        active = true;
+        wantSound = withSound;
+        startActive();
+      },
+      deactivate() {
+        active = false;
+        clearTimeout(blockTimer);
+        safe(() => {
+          player.mute();
+          if (primed) player.pauseVideo();
+        });
+      },
+      setMuted(m) {
+        wantSound = !m;
+        safe(() => (m ? player.mute() : player.unMute()));
+      },
+      togglePlay() {
+        safe(() => {
+          if (player.getPlayerState() === PLAYING) {
+            userPaused = true;
+            player.pauseVideo();
+          } else {
+            userPaused = false;
+            player.playVideo();
+          }
+        });
+      },
       destroy() {
         destroyed = true;
+        clearTimeout(blockTimer);
         try {
           player.destroy();
         } catch {
           /* already gone */
         }
         host.replaceChildren();
-      },
-      togglePlay() {
-        try {
-          if (player.getPlayerState() === 1) player.pauseVideo();
-          else player.playVideo();
-        } catch {
-          /* not ready */
-        }
-      },
-      setMuted(m) {
-        try {
-          if (m) player.mute();
-          else player.unMute();
-        } catch {
-          /* not ready */
-        }
       },
     };
     return handle;

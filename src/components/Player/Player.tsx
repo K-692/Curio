@@ -1,27 +1,28 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { FeedItem } from '../../app/types';
 import { loadAdapter, type PlayerHandle } from '../../providers/types';
-import { IconSoundOff } from '../Icons';
 
 interface Props {
   item: FeedItem;
+  /** On screen. When false the player is preloaded: buffered, paused and muted. */
+  active: boolean;
   muted: boolean;
   onUnavailable(reason: string): void;
   onEnded(): void;
-  onUnmute(): void;
+  onSoundBlocked(): void;
 }
 
 /**
- * Mounts exactly one official provider player for the active item and disposes it on leave.
- * Only the active slide renders this component, so at most one third-party player exists.
+ * One official provider player. The feed mounts it for the active item and the next few
+ * (preload window) and destroys it when the item leaves that window.
  */
-export function Player({ item, muted, onUnavailable, onEnded, onUnmute }: Props) {
+export function Player({ item, active, muted, onUnavailable, onEnded, onSoundBlocked }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const handle = useRef<PlayerHandle | null>(null);
   const [ready, setReady] = useState(false);
   const [gesture, setGesture] = useState(false);
-  const mutedRef = useRef(muted);
-  mutedRef.current = muted;
+  const live = useRef({ active, muted, onUnavailable, onEnded, onSoundBlocked });
+  live.current = { active, muted, onUnavailable, onEnded, onSoundBlocked };
 
   useEffect(() => {
     let cancelled = false;
@@ -31,16 +32,17 @@ export function Player({ item, muted, onUnavailable, onEnded, onUnmute }: Props)
       .then((a) =>
         a.mount(el, item, {
           onReady: () => !cancelled && setReady(true),
-          onUnavailable: (r) => !cancelled && onUnavailable(r),
-          onEnded: () => !cancelled && onEnded(),
-        }, { muted: mutedRef.current }),
+          onUnavailable: (r) => !cancelled && live.current.onUnavailable(r),
+          onEnded: () => !cancelled && live.current.onEnded(),
+          onSoundBlocked: () => !cancelled && live.current.onSoundBlocked(),
+        }, { active: live.current.active, withSound: !live.current.muted }),
       )
       .then((h) => {
         if (cancelled) return h.destroy();
         handle.current = h;
         setGesture(h.supportsGestureLayer);
       })
-      .catch(() => !cancelled && onUnavailable('The player could not load'));
+      .catch(() => !cancelled && live.current.onUnavailable('The player could not load'));
     return () => {
       cancelled = true;
       handle.current?.destroy();
@@ -48,23 +50,26 @@ export function Player({ item, muted, onUnavailable, onEnded, onUnmute }: Props)
     };
   }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Becoming visible / leaving the screen.
+  const first = useRef(true);
   useEffect(() => {
-    handle.current?.setMuted?.(muted);
-  }, [muted, ready]);
+    if (first.current) { first.current = false; return; }
+    if (active) handle.current?.activate(!live.current.muted);
+    else handle.current?.deactivate();
+  }, [active]);
+
+  useEffect(() => {
+    if (active) handle.current?.setMuted(muted);
+  }, [muted, active, ready]);
 
   return (
     <div class="player">
       {!ready && item.thumbnailUrl && <img class="poster under" src={item.thumbnailUrl} alt="" referrerPolicy="no-referrer" />}
-      {!ready && <div class="spinner" role="status"><span class="sr-only">Loading video</span></div>}
-      <div class="player-host" ref={host} />
-      {gesture && ready && (
+      {!ready && active && <div class="spinner" role="status"><span class="sr-only">Loading video</span></div>}
+      <div class="player-host" ref={host} aria-hidden={active ? undefined : 'true'} />
+      {gesture && ready && active && (
         // Transparent layer so swipes/wheel scroll the feed; leaves the provider's control bar uncovered.
-        <button type="button" class="gesture" aria-label="Play or pause" onClick={() => handle.current?.togglePlay?.()} />
-      )}
-      {gesture && ready && muted && (
-        <button type="button" class="unmute" onClick={onUnmute}>
-          <IconSoundOff size={18} /> Tap for sound
-        </button>
+        <button type="button" class="gesture" aria-label="Play or pause" onClick={() => handle.current?.togglePlay()} />
       )}
     </div>
   );

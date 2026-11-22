@@ -23,6 +23,10 @@ const instagram: ProviderAdapter = {
     host.appendChild(iframe);
     return {
       supportsGestureLayer: false,
+      activate() {},
+      deactivate() {},
+      setMuted() {},
+      togglePlay() {},
       destroy() {
         clearTimeout(timer);
         iframe.src = 'about:blank';

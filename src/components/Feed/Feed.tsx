@@ -8,6 +8,8 @@ import { IconUp, IconDown, IconSoundOn, IconSoundOff, IconShuffle } from '../Ico
 
 /** Queue thresholds (blueprint §6). */
 const REFILL_AT = 5;
+/** How many upcoming items get a buffered (paused, muted) player. */
+const PRELOAD = 3;
 const MAX_RETRIES = 6;
 
 type Status = 'loading' | 'ready' | 'empty' | 'error';
@@ -17,7 +19,8 @@ export function Feed({ uid }: { uid: string }) {
   const [active, setActive] = useState(0);
   const [status, setStatus] = useState<Status>('loading');
   const [refilling, setRefilling] = useState(false);
-  const [muted, setMuted] = useState(true);
+  const [muted, setMuted] = useState(false);
+  const [soundBlocked, setSoundBlocked] = useState(false);
   const [online, setOnline] = useState(() => navigator.onLine !== false);
   const [announce, setAnnounce] = useState('');
 
@@ -186,6 +189,19 @@ export function Feed({ uid }: { uid: string }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [go]);
 
+  // Sound is on by default. If the browser blocked it (no interaction yet), the first tap/key unlocks it.
+  useEffect(() => {
+    if (!soundBlocked) return;
+    const unlock = () => { setSoundBlocked(false); setMuted(false); };
+    window.addEventListener('pointerdown', unlock, { once: true, capture: true });
+    window.addEventListener('keydown', unlock, { once: true, capture: true });
+    return () => {
+      window.removeEventListener('pointerdown', unlock, { capture: true });
+      window.removeEventListener('keydown', unlock, { capture: true });
+    };
+  }, [soundBlocked]);
+  const onSoundBlocked = useCallback(() => { setMuted(true); setSoundBlocked(true); }, []);
+
   const onWatched = useCallback((item: FeedItem, seconds: number) => {
     if (watched.current.has(item.id)) return;
     watched.current.add(item.id);
@@ -217,8 +233,7 @@ export function Feed({ uid }: { uid: string }) {
     return (
       <div class="feed-state" role="status">
         <p>The catalogue is empty for now.</p>
-        <p class="muted">Suggest a video to get Curio started.</p>
-        <a class="btn" href="#/add">Suggest a video</a>
+        <p class="muted">Suggest a video from the profile menu to get Curio started.</p>
       </div>
     );
   }
@@ -234,11 +249,11 @@ export function Feed({ uid }: { uid: string }) {
             index={i}
             total={items.length}
             active={i === active}
-            warm={i === active + 1}
+            preload={i > active && i <= active + PRELOAD}
             muted={muted}
             onWatched={onWatched}
             onSkip={() => go(1)}
-            onUnmute={() => setMuted(false)}
+            onSoundBlocked={onSoundBlocked}
           />
         ))}
         {(
@@ -260,12 +275,17 @@ export function Feed({ uid }: { uid: string }) {
       </div>
       <div class="feed-controls" role="group" aria-label="Feed controls">
         <button type="button" class="iconbtn round" onClick={() => go(-1)} disabled={active === 0} aria-label="Previous video"><IconUp /></button>
-        <button type="button" class="iconbtn round" onClick={() => setMuted((m) => !m)} aria-pressed={!muted} aria-label={muted ? 'Unmute' : 'Mute'}>
+        <button type="button" class="iconbtn round" onClick={() => { setSoundBlocked(false); setMuted((m) => !m); }} aria-pressed={!muted} aria-label={muted ? 'Unmute' : 'Mute'}>
           {muted ? <IconSoundOff /> : <IconSoundOn />}
         </button>
         <button type="button" class="iconbtn round" onClick={() => go(1)} disabled={atEnd} aria-label="Next video"><IconDown /></button>
-        <span class="queue-pill" title="Recommendations ready" aria-label={`${upcoming} recommendations ready`}>{Math.min(upcoming, 99)}</span>
+        <span class="sr-only" aria-live="polite">{`${upcoming} recommendations ready`}</span>
       </div>
+      {soundBlocked && muted && (
+        <button type="button" class="sound-pill" onClick={() => { setSoundBlocked(false); setMuted(false); }}>
+          <IconSoundOff size={18} /> Tap for sound
+        </button>
+      )}
       {!online && <div class="toast" role="status">Offline — playing what's already queued</div>}
       {online && refilling && upcoming < 2 && !atEnd && <div class="toast" role="status">Loading more…</div>}
     </div>

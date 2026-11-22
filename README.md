@@ -29,7 +29,8 @@ The Firebase project stays on the **Spark plan** (no billing account), so it can
 - `src/services/engine.ts` — pure, unit-tested selection logic: shuffled topic cycle (crypto RNG), topic-first selection (a topic with 5,000 videos never dominates one with 50), max 2 consecutive per topic, excludes queued + recently-watched videos while possible, marks empty topics exhausted for the cycle.
 - `src/services/feed.ts` — fetches a random approved video per topic via a random pivot on an indexed `rand` field (≤2 small reads), persists cycle + queue in `users/{uid}/state/feed` so a refresh doesn't reshuffle.
 - `src/components/Feed` — keeps the active item + **10 upcoming** metadata records; refills in the background when 5 remain; retries with bounded exponential backoff; continues offline with what's queued.
-- `src/components/Player` — mounts **exactly one** official player (the active item) via dynamically imported provider adapters and destroys it on navigation. Only the next item's thumbnail is warmed.
+- `src/components/Player` — official players via dynamically imported provider adapters. The active item plays **with sound by default** (falls back to muted + "Tap for sound" if the browser blocks unmuted autoplay before the first interaction). The **next 3 items are preloaded**: their players buffer the opening seconds muted and paused, so advancing is instant. Players outside that window are destroyed.
+- UI: brand top-left, theme + profile top-right; History, Suggest, Curate and About live in the profile menu.
 - A watch is recorded after 5 visible seconds (or on completion), deduplicated per video.
 
 ## Data model (Firestore)
