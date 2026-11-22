@@ -13,6 +13,7 @@ import { doc, getDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firest
 import { auth, db } from './firebase';
 import { clearAllHistory } from './history';
 import { deleteFeedState } from './feed';
+import { deleteTopicStats } from './stats';
 
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
@@ -60,6 +61,7 @@ export async function ensureProfile(user: User): Promise<{ isAdmin: boolean }> {
 export async function deleteAccount(user: User): Promise<void> {
   await clearAllHistory(user.uid);
   await deleteFeedState(user.uid);
+  await deleteTopicStats(user.uid);
   await deleteDoc(doc(db, 'users', user.uid));
   try {
     await deleteUser(user);

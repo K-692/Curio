@@ -31,6 +31,7 @@ document.addEventListener('click', (e) => {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
   const a = (e.target as Element).closest?.('a');
   if (!a || a.target || a.hasAttribute('download') || a.origin !== location.origin || !a.pathname.startsWith(BASE)) return;
+  if (a.hash && a.pathname === location.pathname) return; // in-page anchor
   e.preventDefault();
   if (a.pathname !== location.pathname) history.pushState(null, '', a.pathname);
   listeners.forEach((l) => l());

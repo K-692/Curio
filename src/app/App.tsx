@@ -10,6 +10,7 @@ import { History } from '../components/History/History';
 import { AddVideo } from '../components/Add/AddVideo';
 import { Admin } from '../components/Admin/Admin';
 import { About } from '../components/About';
+import { Polymath } from '../components/Polymath';
 import { Logo } from '../components/Logo';
 
 type AuthState = { status: 'loading' } | { status: 'out'; error?: string } | { status: 'in'; user: User; isAdmin: boolean };
@@ -60,6 +61,7 @@ export function App() {
       <main id="main" class={route === 'feed' ? 'main-feed' : 'page'} tabIndex={-1}>
         {route === 'feed' && <Feed key={user.uid} uid={user.uid} />}
         {route === 'history' && <History uid={user.uid} />}
+        {route === 'polymath' && <Polymath uid={user.uid} />}
         {route === 'add' && <AddVideo uid={user.uid} isAdmin={isAdmin} />}
         {route === 'admin' && (isAdmin ? <Admin uid={user.uid} /> : <p>Curators only.</p>)}
         {route === 'about' && <About user={user} />}

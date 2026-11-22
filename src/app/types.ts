@@ -27,6 +27,8 @@ export interface VideoDoc extends Omit<FeedItem, 'id'> {
 export interface Topic {
   slug: string;
   name: string;
+  /** One-word label for the Polymath chart. */
+  short: string;
   description: string;
 }
 

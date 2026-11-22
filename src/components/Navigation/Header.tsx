@@ -4,7 +4,7 @@ import { href, type Route } from '../../hooks/useRoute';
 import type { useTheme } from '../../hooks/useTheme';
 import { signOut } from '../../services/auth';
 import { Logo } from '../Logo';
-import { IconHistory, IconSun, IconMoon, IconInfo } from '../Icons';
+import { IconHistory, IconSun, IconMoon, IconInfo, IconRadar } from '../Icons';
 
 interface Props {
   route: Route;
@@ -76,6 +76,7 @@ function ProfileMenu({ user }: { user: User }) {
             <span class="muted">{user.email}</span>
           </div>
           <a role="menuitem" href={href('history')}><IconHistory size={18} /> Watched history</a>
+          <a role="menuitem" href={href('polymath')}><IconRadar size={18} /> Polymath</a>
           <a role="menuitem" href={href('about')}><IconInfo size={18} /> About & privacy</a>
           <button role="menuitem" type="button" onClick={() => signOut()}>Sign out</button>
         </div>
