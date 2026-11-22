@@ -85,24 +85,30 @@ export function Feed({ uid }: { uid: string }) {
   }, [persist]);
 
   // Initial load: restore the persisted queue so a refresh doesn't reshuffle it.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
+  const init = useCallback(async () => {
+    retries.current = 0;
+    exhausted.current = false;
+    setStatus((st) => (itemsRef.current.length ? st : 'loading'));
+    try {
+      if (!stateRef.current) {
         const s = await loadFeedState(uid);
-        if (cancelled) return;
         stateRef.current = s;
         const restored = s.queue.filter((i) => i && i.id && i.provider);
         itemsRef.current = restored;
         setItems(restored);
         if (restored.length) setStatus('ready');
-        if (restored.length < BATCH_SIZE + 1) await refill(true);
-      } catch {
-        if (!cancelled) setStatus('error');
       }
-    })();
+      // Active item + 10 upcoming: a second batch tops up the first.
+      if (itemsRef.current.length < BATCH_SIZE + 1) await refill(true);
+      if (itemsRef.current.length < BATCH_SIZE + 1 && !exhausted.current) await refill(true);
+    } catch {
+      setStatus('error');
+    }
+  }, [uid, refill]);
+
+  useEffect(() => {
+    init();
     return () => {
-      cancelled = true;
       abort.current?.abort();
       clearTimeout(retryTimer.current);
       // Flush the queue pointer on leave (sign-out/navigation clears in-memory state).
@@ -112,7 +118,7 @@ export function Feed({ uid }: { uid: string }) {
         saveFeedState(uid, stateRef.current).catch(() => {});
       }
     };
-  }, [uid, refill]);
+  }, [uid, init]);
 
   // Track the active slide via IntersectionObserver.
   useEffect(() => {
@@ -163,7 +169,8 @@ export function Feed({ uid }: { uid: string }) {
     const target = Math.max(0, Math.min(itemsRef.current.length, activeRef.current + delta));
     const el = root.querySelector<HTMLElement>(`.slide[data-index="${target}"]`);
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    el?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    // Scroll only the feed container (scrollIntoView would also scroll the page shell).
+    if (el) root.scrollTo({ top: el.offsetTop, behavior: reduce ? 'auto' : 'smooth' });
   }, []);
 
   // Keyboard navigation (not while typing in a field).
@@ -184,7 +191,8 @@ export function Feed({ uid }: { uid: string }) {
     watched.current.add(item.id);
     if (stateRef.current) rememberWatched(stateRef.current, item.id);
     recordWatched(uid, item, seconds).catch(() => watched.current.delete(item.id));
-  }, [uid]);
+    persist();
+  }, [uid, persist]);
 
   const upcoming = Math.max(0, items.length - 1 - active);
   const atEnd = active >= items.length;
@@ -201,7 +209,7 @@ export function Feed({ uid }: { uid: string }) {
     return (
       <div class="feed-state" role="alert">
         <p>{online ? 'Could not load the feed.' : 'You are offline.'}</p>
-        <button class="btn" type="button" onClick={() => { retries.current = 0; refill(true); }}>Try again</button>
+        <button class="btn" type="button" onClick={() => init()}>Try again</button>
       </div>
     );
   }
