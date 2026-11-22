@@ -37,6 +37,9 @@ const RESET = process.env.RESET === '1';
 const KNOWLEDGE_CATEGORIES = ['27', '28', '25', '26'];
 /** Search terms (OR-ed) that favour facts, explainers and news within any topic. */
 const KNOWLEDGE_QUERY = 'facts|explained|"did you know"|science|history|news|why|how';
+/** General categories (People & Blogs, Entertainment, Travel, Pets, Sports, Film, Gaming) pass only with clear knowledge signals. */
+const MIXED_CATEGORIES = ['22', '24', '19', '15', '17', '1', '20', '10', '2'];
+const KNOWLEDGE_SIGNAL = /\b(facts?|explain(ed|s|er)?|did you know|history|historical|science|scientific|news|why|how (it|they|does|do|to)|learn(ed)?|lesson|truth|myth|discover(y|ed)?|study|research|engineer(ing)?|invent(ed|ion)?|origin|secret|record|world'?s (first|largest|biggest|smallest|oldest)|physics|chemistry|biology|space|nasa|ancient|economy|psychology|brain|geography)\b/i;
 
 initializeApp({ credential: cert(JSON.parse(SA)) });
 const db = getFirestore();
@@ -66,8 +69,14 @@ const english = (v) => {
   return lang.startsWith('en') && (latin.length === 0 || ascii.length / latin.length > 0.8);
 };
 
+const knowledgeContent = (v) => {
+  const cat = v.snippet?.categoryId;
+  if (KNOWLEDGE_CATEGORIES.includes(cat)) return true;
+  return MIXED_CATEGORIES.includes(cat) && KNOWLEDGE_SIGNAL.test(`${v.snippet?.title ?? ''} ${(v.snippet?.description ?? '').slice(0, 300)}`);
+};
+
 const eligible = (v) =>
-  KNOWLEDGE_CATEGORIES.includes(v.snippet?.categoryId) && english(v) &&
+  knowledgeContent(v) && english(v) &&
   v.status?.embeddable && v.status?.privacyStatus === 'public' && !v.status?.madeForKids &&
   !v.contentDetails?.contentRating?.ytRating && seconds(v.contentDetails?.duration) <= MAX_SECONDS &&
   v.snippet?.liveBroadcastContent === 'none';
@@ -119,12 +128,33 @@ async function trending() {
         pageToken = j.nextPageToken;
         if (!pageToken) break;
       } catch (e) {
-        console.warn(`chart ${cat}: ${e.message}`);
+        console.warn(`chart ${cat}: not available in ${REGION}`);
         break;
       }
     }
   }
   console.log(`trending charts: +${added}`);
+  return added;
+}
+
+/** Category-wide knowledge searches (Education, Science & Tech, News): most-viewed recent Shorts. */
+async function byCategory() {
+  const since = new Date(Date.now() - 14 * 864e5).toISOString();
+  let added = 0;
+  for (const cat of ['27', '28', '25']) {
+    try {
+      const s = await yt('search', {
+        part: 'id', type: 'video', videoCategoryId: cat, q: KNOWLEDGE_QUERY, videoDuration: 'short', videoEmbeddable: 'true',
+        safeSearch: 'strict', order: 'viewCount', publishedAfter: since, maxResults: 50, regionCode: REGION, relevanceLanguage: 'en',
+      }, 100);
+      const ids = (s.items ?? []).map((i) => i.id?.videoId).filter(Boolean);
+      const n = await save((await details(ids)).filter(eligible), YOUTUBE_TOPICS.find((t) => t.slug === (cat === '28' ? 'technology' : cat === '25' ? 'politics' : 'knowledge')));
+      added += n;
+      console.log(`category ${cat}: +${n}`);
+    } catch (e) {
+      console.warn(`category ${cat}: ${e.message}`);
+    }
+  }
   return added;
 }
 
@@ -136,7 +166,7 @@ async function byTopic() {
     try {
       const s = await yt('search', {
         part: 'id', type: 'video', topicId: t.id, q: KNOWLEDGE_QUERY, videoDuration: 'short', videoEmbeddable: 'true',
-        safeSearch: 'strict', order: 'viewCount', publishedAfter: since, maxResults: 25, regionCode: REGION, relevanceLanguage: 'en',
+        safeSearch: 'strict', order: 'viewCount', publishedAfter: since, maxResults: 50, regionCode: REGION, relevanceLanguage: 'en',
       }, 100);
       const ids = (s.items ?? []).map((i) => i.id?.videoId).filter(Boolean);
       const n = await save((await details(ids)).filter(eligible), t);
@@ -200,7 +230,7 @@ const run = db.collection('ingestionRuns').doc();
 await run.set({ provider: 'youtube', startedAt: FieldValue.serverTimestamp(), status: 'running' });
 try {
   if (RESET) await wipeCatalogue();
-  const t = await trending();
+  const t = (await trending()) + (await byCategory());
   const a = await byTopic();
   const removed = await revalidate();
   const topics = await rebuildTopicIndex();
