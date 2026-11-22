@@ -1,0 +1,17 @@
+[
+  { "slug": "physics-chemistry", "name": "Physics & Chemistry", "description": "Forces, matter, energy, reactions", "queries": ["physics explained shorts", "chemistry experiment explained shorts"] },
+  { "slug": "life-sciences", "name": "Life Sciences", "description": "Biology, evolution, animals, plants", "queries": ["biology fact explained shorts", "evolution animals science shorts"] },
+  { "slug": "space-astronomy", "name": "Space & Astronomy", "description": "Planets, stars, cosmology", "queries": ["astronomy explained shorts", "space science fact shorts"] },
+  { "slug": "mathematics-logic", "name": "Mathematics & Logic", "description": "Numbers, probability, puzzles, proof", "queries": ["math explained shorts", "logic puzzle math shorts"] },
+  { "slug": "technology-engineering", "name": "Technology & Engineering", "description": "Computing, AI, robotics, how machines work", "queries": ["engineering explained shorts", "how computers work shorts"] },
+  { "slug": "history-archaeology", "name": "History & Archaeology", "description": "Ancient to modern, local to world history", "queries": ["history explained shorts", "archaeology discovery shorts"] },
+  { "slug": "geography-environment", "name": "Geography & Environment", "description": "Countries, maps, climate, ecology, oceans", "queries": ["geography explained shorts", "climate ecology explained shorts"] },
+  { "slug": "economics-society", "name": "Economics & Society", "description": "Markets, anthropology, sociology, policy", "queries": ["economics explained shorts", "sociology explained shorts"] },
+  { "slug": "philosophy-ethics", "name": "Philosophy & Ethics", "description": "Thought experiments, knowledge, morality", "queries": ["philosophy explained shorts", "thought experiment shorts"] },
+  { "slug": "psychology-mind", "name": "Psychology & Mind", "description": "Cognition, memory, behaviour, learning", "queries": ["psychology explained shorts", "cognitive bias explained shorts"] },
+  { "slug": "language-literature", "name": "Language & Literature", "description": "Linguistics, etymology, writing, books", "queries": ["etymology word origin shorts", "linguistics explained shorts"] },
+  { "slug": "arts-design", "name": "Arts & Design", "description": "Painting, cinema, photography, design", "queries": ["art history explained shorts", "design principles explained shorts"] },
+  { "slug": "music-sound", "name": "Music & Sound", "description": "Music theory, instruments, acoustics", "queries": ["music theory explained shorts", "acoustics sound science shorts"] },
+  { "slug": "health-body", "name": "Health & Human Body", "description": "Anatomy, physiology, evidence-based health", "queries": ["human body explained shorts", "anatomy physiology shorts"] },
+  { "slug": "culture-civilisation", "name": "Culture & Civilisation", "description": "Traditions, food history, architecture", "queries": ["culture traditions explained shorts", "food history shorts"] }
+]

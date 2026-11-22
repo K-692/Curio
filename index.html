@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Curio</title>
+    <meta name="description" content="Curio — short videos from every corner of human knowledge. Always a surprise." />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-//tuxE50Qwu2/371t013Fg0NjHUz8Jy6xhXQgQ6pnUc=' https://www.youtube.com https://apis.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://i.ytimg.com https://*.googleusercontent.com https://*.cdninstagram.com; frame-src https://www.youtube-nocookie.com https://www.youtube.com https://www.instagram.com https://curio-ebc43.firebaseapp.com https://accounts.google.com; connect-src 'self' https://*.googleapis.com https://www.youtube.com https://curio-ebc43.firebaseapp.com; object-src 'none'; base-uri 'self'" />
+    <link rel="icon" type="image/png" href="/Curio/icons/favicon.png" />
+    <link rel="apple-touch-icon" href="/Curio/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/Curio/manifest.webmanifest" />
+    <link rel="preconnect" href="https://www.youtube-nocookie.com" />
+    <link rel="preconnect" href="https://i.ytimg.com" />
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+    <script>
+      // Apply the saved theme before first paint to avoid a flash.
+      try { var t = localStorage.getItem('curio.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <noscript>Curio needs JavaScript to play videos.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
