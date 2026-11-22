@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 
-export type Route = 'feed' | 'history' | 'polymath' | 'add' | 'admin' | 'about';
-const ROUTES: Route[] = ['feed', 'history', 'polymath', 'add', 'admin', 'about'];
+export type Route = 'feed' | 'history' | 'polymath' | 'about';
+const ROUTES: Route[] = ['feed', 'history', 'polymath', 'about'];
 const BASE = import.meta.env.BASE_URL; // '/Curio/'
 
 /** Clean path URLs: /Curio/, /Curio/history, … (GitHub Pages serves 404.html = the app for deep links). */

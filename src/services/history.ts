@@ -30,6 +30,7 @@ export async function recordWatched(uid: string, item: FeedItem, watchSeconds: n
     creatorName: item.creatorName.slice(0, 100),
     thumbnailUrl: item.thumbnailUrl.slice(0, 500),
     topic: item.topic,
+    topicName: item.topicName.slice(0, 60),
     watchSeconds: Math.max(0, Math.min(86400, Math.round(watchSeconds))),
     watchedAt: serverTimestamp(),
   });
@@ -53,6 +54,7 @@ export async function getHistoryPage(uid: string, cursor: HistoryCursor) {
       creatorName: x.creatorName,
       thumbnailUrl: x.thumbnailUrl,
       topic: x.topic,
+      topicName: x.topicName ?? x.topic,
       watchSeconds: x.watchSeconds ?? 0,
       watchedAt: x.watchedAt?.toDate?.() ?? null,
     };

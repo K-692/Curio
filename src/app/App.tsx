@@ -7,11 +7,11 @@ import { Header } from '../components/Navigation/Header';
 import { SignIn } from '../components/SignIn';
 import { Feed } from '../components/Feed/Feed';
 import { History } from '../components/History/History';
-import { AddVideo } from '../components/Add/AddVideo';
-import { Admin } from '../components/Admin/Admin';
 import { About } from '../components/About';
 import { Polymath } from '../components/Polymath';
 import { Logo } from '../components/Logo';
+import { IconBack } from '../components/Icons';
+import { href } from '../hooks/useRoute';
 
 type AuthState = { status: 'loading' } | { status: 'out'; error?: string } | { status: 'in'; user: User; isAdmin: boolean };
 
@@ -58,12 +58,13 @@ export function App() {
     <div class="shell">
       <a class="skip" href="#main">Skip to content</a>
       <Header route={route} theme={theme} user={user} isAdmin={isAdmin} />
-      <main id="main" class={route === 'feed' ? 'main-feed' : 'page'} tabIndex={-1}>
+      <main id="main" class={route === 'feed' ? 'main-feed' : route === 'polymath' ? 'page no-scroll' : 'page'} tabIndex={-1}>
         {route === 'feed' && <Feed key={user.uid} uid={user.uid} />}
+        {route !== 'feed' && (
+          <a class="back" href={href('feed')}><IconBack size={18} /> Back to feed</a>
+        )}
         {route === 'history' && <History uid={user.uid} />}
         {route === 'polymath' && <Polymath uid={user.uid} />}
-        {route === 'add' && <AddVideo uid={user.uid} isAdmin={isAdmin} />}
-        {route === 'admin' && (isAdmin ? <Admin uid={user.uid} /> : <p>Curators only.</p>)}
         {route === 'about' && <About user={user} />}
       </main>
     </div>

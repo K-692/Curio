@@ -11,25 +11,23 @@ export interface FeedItem {
   title: string;
   creatorName: string;
   thumbnailUrl: string;
+  /** YouTube topic slug, e.g. "knowledge", "jazz". */
   topic: string;
+  /** Display name, e.g. "Knowledge", "Jazz". */
+  topicName: string;
 }
 
 export interface VideoDoc extends Omit<FeedItem, 'id'> {
   status: VideoStatus;
   embedAllowed: boolean;
   rand: number;
+  /** Trending score: views per hour since publishing. */
+  score: number;
+  views: number;
   tags: string[];
   source: 'admin' | 'submission' | 'ingest';
   createdAt?: unknown;
   checkedAt?: unknown;
-}
-
-export interface Topic {
-  slug: string;
-  name: string;
-  /** One-word label for the Polymath chart. */
-  short: string;
-  description: string;
 }
 
 export interface HistoryEntry extends FeedItem {

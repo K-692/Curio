@@ -7,3 +7,5 @@ service-account*.json
 .firebase
 firebase-debug.log
 firestore-debug.log
+17127543_1920_1080_24fps.mp4
+*firebase-adminsdk*.json

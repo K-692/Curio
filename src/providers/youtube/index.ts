@@ -77,23 +77,31 @@ const youtube: ProviderAdapter = {
     let ready = false;
     let active = opts.active;
     let wantSound = opts.withSound;
-    let primed = false; // preload: paused once buffering has started
     let blockTimer: number | undefined;
-    let guardUntil = 0; // window after an unmuted start in which an unexpected pause means "blocked"
     let userPaused = false;
-    let captionsHandled = false;
+    let captionsOff = false; // captions must be switched off at this activation's playback start
     let lastMuted: boolean | null = null;
     let muteWatch: number | undefined;
+    let settleUntil = 0; // after (un)muting, YouTube needs a moment before isMuted() is reliable
 
-    // Mirror mute changes made with YouTube's own speaker button back to the app.
+    const hideCaptions = () =>
+      safe(() => {
+        player.unloadModule('captions');
+        player.unloadModule('cc');
+      });
+
+    // Mirror mute changes made with YouTube's own speaker button back to the app,
+    // ignoring the settling period right after we changed it ourselves.
     const watchMute = () => {
       clearInterval(muteWatch);
       muteWatch = window.setInterval(() => {
-        if (!active) return;
+        if (!active || Date.now() < settleUntil) return;
         safe(() => {
+          if (player.getPlayerState() !== PLAYING) return;
           const m = player.isMuted();
           if (m !== lastMuted) {
             lastMuted = m;
+            wantSound = !m;
             events.onMutedChange(m);
           }
         });
@@ -102,7 +110,6 @@ const youtube: ProviderAdapter = {
 
     const fallbackMuted = () =>
       safe(() => {
-        guardUntil = 0;
         clearTimeout(blockTimer);
         player.mute();
         player.playVideo();
@@ -124,6 +131,9 @@ const youtube: ProviderAdapter = {
         clearTimeout(blockTimer);
         player.seekTo(0, true);
         userPaused = false;
+        captionsOff = true;
+        hideCaptions();
+        settleUntil = Date.now() + 2500;
         if (wantSound && !soundAllowedNow()) {
           player.mute();
           player.playVideo();
@@ -138,13 +148,18 @@ const youtube: ProviderAdapter = {
         lastMuted = !wantSound;
         watchMute();
         if (!wantSound) return;
-        // Browsers refuse unmuted autoplay until the user has interacted with the page:
-        // the player then pauses itself or never starts. Fall back to muted playback.
-        guardUntil = Date.now() + 3000;
+        // If the browser still refused to start with sound, retry once, then fall back to muted.
         blockTimer = window.setTimeout(() => {
           safe(() => {
             const st = player.getPlayerState();
-            if (st !== PLAYING && st !== BUFFERING && !userPaused) fallbackMuted();
+            if (st === PLAYING || st === BUFFERING || userPaused) return;
+            player.playVideo();
+            blockTimer = window.setTimeout(() => {
+              safe(() => {
+                const st2 = player.getPlayerState();
+                if (st2 !== PLAYING && st2 !== BUFFERING && !userPaused) fallbackMuted();
+              });
+            }, 1500);
           });
         }, 2000);
       });
@@ -175,25 +190,26 @@ const youtube: ProviderAdapter = {
           else safe(() => { player.mute(); player.playVideo(); });
           events.onReady();
         },
-        // Captions off by default: drop the captions module the first time it loads.
-        // Later loads (the user pressing CC) are left alone.
+        // Captions off by default on every video: drop the captions module whenever it loads
+        // around playback start. If the user presses CC later, it stays on for that video.
         onApiChange: () => {
-          if (captionsHandled) return;
-          captionsHandled = true;
-          safe(() => {
-            player.unloadModule('captions');
-            player.unloadModule('cc');
-          });
+          if (!active || captionsOff) hideCaptions();
         },
         onError: (e: { data: number }) => !destroyed && events.onUnavailable(ERRORS[e.data] ?? 'Video unavailable'),
         onStateChange: (e: { data: number }) => {
           if (destroyed) return;
           if (e.data === 0 && active) events.onEnded();
           if (active) events.onPlayingChange(e.data === PLAYING);
-          if (e.data === 2 && active && !userPaused && Date.now() < guardUntil && !player.isMuted()) fallbackMuted();
+          if (e.data === PLAYING && active) {
+            // Playback really started: enforce this video's sound + caption state.
+            if (captionsOff) {
+              hideCaptions();
+              window.setTimeout(() => { captionsOff = false; }, 1500);
+            }
+            if (wantSound && player.isMuted() && Date.now() < settleUntil) player.unMute();
+          }
           // Preload: let it start buffering muted, then hold at the first frame.
           if (e.data === PLAYING && !active) {
-            primed = true;
             safe(() => player.pauseVideo());
           }
         },
@@ -211,14 +227,12 @@ const youtube: ProviderAdapter = {
         active = false;
         clearTimeout(blockTimer);
         clearInterval(muteWatch);
-        safe(() => {
-          player.mute();
-          if (primed) player.pauseVideo();
-        });
+        safe(() => player.pauseVideo());
       },
       setMuted(m) {
         wantSound = !m;
         lastMuted = m;
+        settleUntil = Date.now() + 1500;
         safe(() => (m ? player.mute() : player.unMute()));
       },
       play() {

@@ -16,30 +16,25 @@ service cloud.firestore {
     }
     function thumbOk(u) { return u == '' || (u is string && u.size() <= 500 && u.matches('^https://i[.]ytimg[.]com/.*')); }
 
-    // Curators: managed in the Firebase console only. A user may check their own flag.
+    // Curators flag (console only). A user may check their own flag.
     match /admins/{uid} {
       allow get: if isOwner(uid);
       allow list, write: if false;
     }
 
-    // Catalogue
+    // Catalogue: filled by the ingestion job (Admin SDK). Read-only for signed-in users.
     match /videos/{id} {
-      allow get, list: if signedIn() && (resource.data.status == 'approved' || isAdmin());
-      allow create, update: if isAdmin() && validVideo(request.resource.data) &&
-        id == request.resource.data.provider + '_' + request.resource.data.providerVideoId;
-      allow delete: if isAdmin();
-    }
-    function validVideo(d) {
-      return d.keys().hasOnly(['provider','providerVideoId','canonicalUrl','title','creatorName','thumbnailUrl','topic','tags','status','embedAllowed','rand','source','createdAt','checkedAt']) &&
-        providerOk(d.provider) && str(d.providerVideoId, 40) && urlOk(d.canonicalUrl) &&
-        str(d.title, 200) && str(d.creatorName, 100) && thumbOk(d.thumbnailUrl) && topicOk(d.topic) &&
-        d.tags is list && d.tags.size() <= 10 &&
-        d.status in ['approved', 'pending', 'unavailable', 'disabled'] &&
-        d.embedAllowed is bool && d.rand is number && d.rand >= 0 && d.rand < 1 &&
-        d.source in ['admin', 'submission', 'ingest'];
+      allow get, list: if signedIn() && resource.data.status == 'approved';
+      allow write: if false;
     }
 
-    // Profiles (minimal). lastSubmitAt powers the submission cooldown below.
+    // Topic index (YouTube topics that currently have videos), maintained by ingestion.
+    match /meta/{docId} {
+      allow get: if signedIn();
+      allow list, write: if false;
+    }
+
+    // Profiles (minimal).
     match /users/{uid} {
       allow get: if isOwner(uid);
       allow create: if isOwner(uid) &&
@@ -47,8 +42,7 @@ service cloud.firestore {
         str(request.resource.data.displayName, 100) && str(request.resource.data.photoURL, 500) &&
         request.resource.data.createdAt == request.time;
       allow update: if isOwner(uid) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastSubmitAt', 'displayName', 'photoURL']) &&
-        (!('lastSubmitAt' in request.resource.data.diff(resource.data).affectedKeys()) || request.resource.data.lastSubmitAt == request.time) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL']) &&
         str(request.resource.data.displayName, 100) && str(request.resource.data.photoURL, 500);
       allow delete: if isOwner(uid);
 
@@ -56,12 +50,13 @@ service cloud.firestore {
       match /history/{videoId} {
         allow get, list, delete: if isOwner(uid);
         allow create, update: if isOwner(uid) &&
-          request.resource.data.keys().hasOnly(['provider','providerVideoId','canonicalUrl','title','creatorName','thumbnailUrl','topic','watchSeconds','watchedAt']) &&
+          request.resource.data.keys().hasOnly(['provider','providerVideoId','canonicalUrl','title','creatorName','thumbnailUrl','topic','topicName','watchSeconds','watchedAt']) &&
           providerOk(request.resource.data.provider) &&
           videoId == request.resource.data.provider + '_' + request.resource.data.providerVideoId &&
           urlOk(request.resource.data.canonicalUrl) &&
           str(request.resource.data.title, 200) && str(request.resource.data.creatorName, 100) &&
           thumbOk(request.resource.data.thumbnailUrl) && topicOk(request.resource.data.topic) &&
+          str(request.resource.data.topicName, 60) &&
           request.resource.data.watchSeconds is int && request.resource.data.watchSeconds >= 0 && request.resource.data.watchSeconds <= 86400 &&
           request.resource.data.watchedAt == request.time &&
           // Rate limit: at most one write per video every 10 seconds.
@@ -72,8 +67,10 @@ service cloud.firestore {
       match /state/stats {
         allow get, delete: if isOwner(uid);
         allow create, update: if isOwner(uid) &&
-          request.resource.data.keys().hasOnly(['topics', 'updatedAt']) &&
-          request.resource.data.topics is map && request.resource.data.topics.size() <= 40 &&
+          request.resource.data.keys().hasOnly(['topics', 'names', 'videos', 'updatedAt']) &&
+          request.resource.data.topics is map && request.resource.data.topics.size() <= 120 &&
+          request.resource.data.names is map && request.resource.data.names.size() <= 120 &&
+          request.resource.data.videos is int && request.resource.data.videos >= 0 &&
           request.resource.data.updatedAt == request.time &&
           (resource == null || request.time > resource.data.updatedAt + duration.value(10, 's'));
       }
@@ -83,36 +80,14 @@ service cloud.firestore {
         allow get, delete: if isOwner(uid);
         allow create, update: if isOwner(uid) && docId == 'feed' &&
           request.resource.data.keys().hasOnly(['cycle','pos','exhausted','lastTopics','queue','recent','updatedAt']) &&
-          request.resource.data.cycle is list && request.resource.data.cycle.size() <= 60 &&
+          request.resource.data.cycle is list && request.resource.data.cycle.size() <= 120 &&
           request.resource.data.pos is int &&
-          request.resource.data.exhausted is list && request.resource.data.exhausted.size() <= 60 &&
+          request.resource.data.exhausted is list && request.resource.data.exhausted.size() <= 120 &&
           request.resource.data.lastTopics is list && request.resource.data.lastTopics.size() <= 6 &&
           request.resource.data.queue is list && request.resource.data.queue.size() <= 25 &&
           request.resource.data.recent is list && request.resource.data.recent.size() <= 400 &&
           request.resource.data.updatedAt == request.time;
       }
-    }
-
-    // Community submissions: pending until a curator reviews. 30s per-user cooldown.
-    match /submissions/{id} {
-      allow get: if isAdmin() || (signedIn() && resource.data.submittedBy == request.auth.uid);
-      allow list: if isAdmin();
-      allow create: if signedIn() &&
-        request.resource.data.keys().hasOnly(['provider','providerVideoId','canonicalUrl','proposedTopic','title','creatorName','submittedBy','reviewStatus','createdAt']) &&
-        request.resource.data.submittedBy == request.auth.uid &&
-        request.resource.data.reviewStatus == 'pending' &&
-        request.resource.data.createdAt == request.time &&
-        providerOk(request.resource.data.provider) && str(request.resource.data.providerVideoId, 40) &&
-        urlOk(request.resource.data.canonicalUrl) && topicOk(request.resource.data.proposedTopic) &&
-        str(request.resource.data.title, 200) && str(request.resource.data.creatorName, 100) &&
-        getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastSubmitAt == request.time &&
-        (!('lastSubmitAt' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
-          request.time > get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastSubmitAt + duration.value(30, 's'));
-      allow update: if isAdmin() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reviewStatus', 'reviewerId', 'reviewedAt']) &&
-        request.resource.data.reviewStatus in ['approved', 'rejected'] &&
-        request.resource.data.reviewerId == request.auth.uid;
-      allow delete: if isAdmin();
     }
 
     // Written only by the ingestion job (Admin SDK bypasses rules).

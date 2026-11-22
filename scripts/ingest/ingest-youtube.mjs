@@ -1,22 +1,23 @@
 /**
- * Curio YouTube ingestion (server-side, runs in GitHub Actions — free).
+ * Curio ingestion (runs free in GitHub Actions; YouTube key + service account stay server-side).
  *
- *  - Discovers short educational videos per topic with the YouTube Data API (quota-aware:
- *    one search.list per topic per run = 100 units; 15 topics ≈ 1,500 of the 10,000 free daily units).
- *  - Keeps only embeddable, public, not-made-for-kids videos up to MAX_SECONDS long.
- *  - Re-validates the oldest catalogue entries and marks removed/non-embeddable ones unavailable.
- *  - Writes an ingestionRuns record.
+ * Each run:
+ *  1. Trending: YouTube's most-popular chart (1 quota unit per page) → keep Shorts (≤ 3 min),
+ *     topic taken from the video's own YouTube topic details.
+ *  2. Random topics from YouTube's whole topic taxonomy: for each, the most-viewed Shorts
+ *     published in the last 14 days (search.list, 100 units each).
+ *  3. Every video gets a trending score = views per hour since publishing, so the feed can
+ *     serve trending videos first.
+ *  4. Re-checks the oldest catalogue entries and drops removed / non-embeddable ones.
+ *  5. Rebuilds meta/topics (topic → name, count) that the app reads to know what exists.
  *
- * Secrets (GitHub → Settings → Secrets → Actions):
- *   YOUTUBE_API_KEY            – YouTube Data API v3 key (free)
- *   FIREBASE_SERVICE_ACCOUNT   – JSON of a Firebase service-account key
- * Env:
- *   INGEST_STATUS=approved|pending  (default pending → curators approve in the app)
+ * Quota: TOPICS_PER_RUN × 100 + a few units. 40 topics × 2 runs/day ≈ 8,000 of the free 10,000.
+ * Secrets: YOUTUBE_API_KEY, FIREBASE_SERVICE_ACCOUNT (JSON).
  */
-import { readFileSync } from 'node:fs';
 import { randomInt } from 'node:crypto';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { YOUTUBE_TOPICS, topicFromDetails } from './youtube-topics.mjs';
 
 const KEY = process.env.YOUTUBE_API_KEY;
 const SA = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -24,98 +25,146 @@ if (!KEY || !SA) {
   console.log('YOUTUBE_API_KEY / FIREBASE_SERVICE_ACCOUNT not set — skipping ingestion.');
   process.exit(0);
 }
-const STATUS = process.env.INGEST_STATUS === 'approved' ? 'approved' : 'pending';
+const TOPICS_PER_RUN = Number(process.env.TOPICS_PER_RUN || 40);
 const MAX_SECONDS = 180;
-const PER_TOPIC = 15;
-const REVALIDATE = 50;
+const REGION = process.env.REGION || 'US';
+const REVALIDATE = 100;
 
 initializeApp({ credential: cert(JSON.parse(SA)) });
 const db = getFirestore();
-const taxonomy = JSON.parse(readFileSync(new URL('../../src/app/taxonomy.json', import.meta.url), 'utf8'));
-
 let quota = 0;
-async function yt(path, params) {
+
+async function yt(path, params, cost) {
+  quota += cost;
   const u = new URL(`https://www.googleapis.com/youtube/v3/${path}`);
-  for (const [k, v] of Object.entries({ ...params, key: KEY })) u.searchParams.set(k, String(v));
+  for (const [k, v] of Object.entries({ ...params, key: KEY })) if (v !== undefined) u.searchParams.set(k, String(v));
   const r = await fetch(u);
   if (!r.ok) throw new Error(`${path} ${r.status}: ${(await r.text()).slice(0, 200)}`);
   return r.json();
 }
 
 const seconds = (iso) => {
-  const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso ?? '');
-  return m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : Infinity;
+  const m = /^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso ?? '');
+  return m ? (+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3] || 0) * 60 + (+m[4] || 0) : Infinity;
 };
+const clean = (s, n) => String(s ?? '').replace(/\s*#\S+/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
 const rand = () => randomInt(0, 2 ** 48) / 2 ** 48;
-const clean = (s, n) => String(s ?? '').replace(/\s*#\S+/g, '').trim().slice(0, n);
-
-async function details(ids) {
-  if (!ids.length) return [];
-  quota += 1;
-  const j = await yt('videos', { part: 'snippet,contentDetails,status', id: ids.join(','), maxResults: 50 });
-  return j.items ?? [];
-}
 
 const eligible = (v) =>
   v.status?.embeddable && v.status?.privacyStatus === 'public' && !v.status?.madeForKids &&
-  seconds(v.contentDetails?.duration) <= MAX_SECONDS && !v.contentDetails?.contentRating?.ytRating;
+  !v.contentDetails?.contentRating?.ytRating && seconds(v.contentDetails?.duration) <= MAX_SECONDS &&
+  v.snippet?.liveBroadcastContent === 'none';
 
-async function discover() {
+function score(v) {
+  const views = Number(v.statistics?.viewCount ?? 0);
+  const hours = Math.max(6, (Date.now() - Date.parse(v.snippet.publishedAt)) / 3.6e6);
+  return Math.round((views / hours) * 100) / 100; // views per hour
+}
+
+async function details(ids) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const j = await yt('videos', { part: 'snippet,contentDetails,status,statistics,topicDetails', id: ids.slice(i, i + 50).join(',') }, 1);
+    out.push(...(j.items ?? []));
+  }
+  return out;
+}
+
+async function save(videos, fallbackTopic) {
+  const batch = db.batch();
+  let n = 0;
+  for (const v of videos) {
+    const topic = topicFromDetails(v.topicDetails) ?? fallbackTopic;
+    if (!topic) continue;
+    batch.set(db.collection('videos').doc(`youtube_${v.id}`), {
+      provider: 'youtube', providerVideoId: v.id, canonicalUrl: `https://www.youtube.com/shorts/${v.id}`,
+      title: clean(v.snippet.title, 200) || 'Untitled', creatorName: clean(v.snippet.channelTitle, 100),
+      thumbnailUrl: `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
+      topic: topic.slug, topicName: topic.name, tags: [],
+      status: 'approved', embedAllowed: true, rand: rand(),
+      score: score(v), views: Number(v.statistics?.viewCount ?? 0), publishedAt: v.snippet.publishedAt,
+      source: 'ingest', createdAt: FieldValue.serverTimestamp(), checkedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    n++;
+  }
+  if (n) await batch.commit();
+  return n;
+}
+
+async function trending() {
   let added = 0;
-  for (const t of taxonomy) {
-    const q = t.queries[randomInt(0, t.queries.length)];
-    quota += 100;
-    const s = await yt('search', {
-      part: 'id', type: 'video', q, maxResults: 25, videoDuration: 'short', videoEmbeddable: 'true',
-      safeSearch: 'strict', relevanceLanguage: 'en', order: ['relevance', 'viewCount', 'rating'][randomInt(0, 3)],
-    });
-    const ids = (s.items ?? []).map((i) => i.id?.videoId).filter(Boolean);
-    const vids = (await details(ids)).filter(eligible).slice(0, PER_TOPIC);
-    const batch = db.batch();
-    let n = 0;
-    for (const v of vids) {
-      const ref = db.collection('videos').doc(`youtube_${v.id}`);
-      if ((await ref.get()).exists) continue; // never overwrite curator decisions
-      batch.set(ref, {
-        provider: 'youtube', providerVideoId: v.id, canonicalUrl: `https://www.youtube.com/shorts/${v.id}`,
-        title: clean(v.snippet.title, 200) || 'Untitled', creatorName: clean(v.snippet.channelTitle, 100),
-        thumbnailUrl: `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`, topic: t.slug, tags: [],
-        status: STATUS, embedAllowed: true, rand: rand(), source: 'ingest',
-        createdAt: FieldValue.serverTimestamp(), checkedAt: FieldValue.serverTimestamp(),
-      });
-      n++;
+  let pageToken;
+  for (let page = 0; page < 4; page++) {
+    const j = await yt('videos', { part: 'snippet,contentDetails,status,statistics,topicDetails', chart: 'mostPopular', regionCode: REGION, maxResults: 50, pageToken }, 1);
+    added += await save((j.items ?? []).filter(eligible), null);
+    pageToken = j.nextPageToken;
+    if (!pageToken) break;
+  }
+  console.log(`trending chart: +${added}`);
+  return added;
+}
+
+async function byTopic() {
+  const picks = [...YOUTUBE_TOPICS].sort(() => rand() - 0.5).slice(0, TOPICS_PER_RUN);
+  const since = new Date(Date.now() - 14 * 864e5).toISOString();
+  let added = 0;
+  for (const t of picks) {
+    try {
+      const s = await yt('search', {
+        part: 'id', type: 'video', topicId: t.id, videoDuration: 'short', videoEmbeddable: 'true',
+        safeSearch: 'strict', order: 'viewCount', publishedAfter: since, maxResults: 25, regionCode: REGION, relevanceLanguage: 'en',
+      }, 100);
+      const ids = (s.items ?? []).map((i) => i.id?.videoId).filter(Boolean);
+      const n = await save((await details(ids)).filter(eligible), t);
+      added += n;
+      console.log(`${t.name}: +${n}`);
+    } catch (e) {
+      console.warn(`${t.name}: ${e.message}`);
+      if (/quota/i.test(e.message)) break;
     }
-    if (n) await batch.commit();
-    added += n;
-    console.log(`${t.slug}: +${n}`);
   }
   return added;
 }
 
 async function revalidate() {
-  const snap = await db.collection('videos').where('provider', '==', 'youtube').orderBy('checkedAt').limit(REVALIDATE).get();
+  const snap = await db.collection('videos').orderBy('checkedAt').limit(REVALIDATE).get();
   if (snap.empty) return 0;
   const live = new Map((await details(snap.docs.map((d) => d.data().providerVideoId))).map((v) => [v.id, v]));
   const batch = db.batch();
-  let flagged = 0;
+  let removed = 0;
   for (const d of snap.docs) {
     const v = live.get(d.data().providerVideoId);
-    const ok = v && v.status?.embeddable && v.status?.privacyStatus !== 'private';
-    const patch = { checkedAt: FieldValue.serverTimestamp() };
-    if (!ok && d.data().status === 'approved') { patch.status = 'unavailable'; patch.embedAllowed = false; flagged++; }
-    batch.update(d.ref, patch);
+    if (!v || !v.status?.embeddable || v.status?.privacyStatus === 'private') {
+      batch.delete(d.ref);
+      removed++;
+    } else {
+      batch.update(d.ref, { checkedAt: FieldValue.serverTimestamp(), score: score(v), views: Number(v.statistics?.viewCount ?? 0) });
+    }
   }
   await batch.commit();
-  return flagged;
+  return removed;
+}
+
+async function rebuildTopicIndex() {
+  const topics = {};
+  for (const t of YOUTUBE_TOPICS) {
+    const c = await db.collection('videos').where('topic', '==', t.slug).where('status', '==', 'approved').count().get();
+    const count = c.data().count;
+    if (count > 0) topics[t.slug] = { name: t.name, count };
+  }
+  await db.doc('meta/topics').set({ topics, updatedAt: FieldValue.serverTimestamp() });
+  return Object.keys(topics).length;
 }
 
 const run = db.collection('ingestionRuns').doc();
 await run.set({ provider: 'youtube', startedAt: FieldValue.serverTimestamp(), status: 'running' });
 try {
-  const added = await discover();
-  const flagged = await revalidate();
-  await run.update({ finishedAt: FieldValue.serverTimestamp(), status: 'ok', added, flagged, quotaUnits: quota });
-  console.log(`done: added ${added}, flagged ${flagged}, ~${quota} quota units`);
+  const t = await trending();
+  const a = await byTopic();
+  const removed = await revalidate();
+  const topics = await rebuildTopicIndex();
+  await run.update({ finishedAt: FieldValue.serverTimestamp(), status: 'ok', added: t + a, removed, topics, quotaUnits: quota });
+  console.log(`done: +${t + a} videos, -${removed}, ${topics} topics, ~${quota} quota units`);
 } catch (e) {
   await run.update({ finishedAt: FieldValue.serverTimestamp(), status: 'error', error: String(e.message).slice(0, 300), quotaUnits: quota });
   console.error(e);

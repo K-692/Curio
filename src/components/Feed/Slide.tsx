@@ -17,8 +17,8 @@ interface Props {
   onSoundBlocked(): void;
   onMutedChange(muted: boolean): void;
   onUnmute(): void;
-  /** One second of real (playing, visible) watch time for this item's topic. */
-  onTopicSecond(topic: string): void;
+  /** One second of real (playing, visible) watch time for this item. */
+  onTopicSecond(item: FeedItem, first: boolean): void;
 }
 
 export const providerLabel = (p: FeedItem['provider']) => (p === 'youtube' ? 'YouTube' : 'Instagram');
@@ -40,7 +40,7 @@ export function Slide({ item, index, total, active, preload, muted, onWatched, o
     const t = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       seconds.current += 1;
-      onTopicSecond(item.topic);
+      onTopicSecond(item, seconds.current === 1);
       if (seconds.current === WATCH_THRESHOLD_SECONDS) onWatched(item, seconds.current);
     }, 1000);
     return () => clearInterval(t);

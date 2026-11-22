@@ -45,7 +45,10 @@ export function Feed({ uid }: { uid: string }) {
       stats.flush();
     };
   }, [stats]);
-  const onTopicSecond = useCallback((topic: string) => stats.add(topic, 1), [stats]);
+  const onTopicSecond = useCallback((item: FeedItem, first: boolean) => {
+    if (first) stats.countVideo();
+    stats.addSecond(item.topic, item.topicName);
+  }, [stats]);
 
   itemsRef.current = items;
   activeRef.current = active;
@@ -248,7 +251,7 @@ export function Feed({ uid }: { uid: string }) {
     return (
       <div class="feed-state" role="status">
         <p>The catalogue is empty for now.</p>
-        <p class="muted">Suggest a video from the profile menu to get Curio started.</p>
+        <p class="muted">New videos arrive from YouTube a few times a day.</p>
       </div>
     );
   }

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { HistoryEntry } from '../../app/types';
-import { topicName } from '../../app/topics';
 import { getHistoryPage, deleteHistoryItem, clearAllHistory, type HistoryCursor } from '../../services/history';
 import { loadFeedState, saveFeedState } from '../../services/feed';
 import { providerLabel } from '../Feed/Slide';
@@ -90,7 +89,7 @@ export function History({ uid }: { uid: string }) {
             <a href={e.canonicalUrl} target="_blank" rel="noopener noreferrer" class="hcard-link" aria-label={`${e.title} — open on ${providerLabel(e.provider)} (new tab)`}>
               {e.thumbnailUrl ? <img src={e.thumbnailUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span class="hcard-blank">{providerLabel(e.provider)}</span>}
               <span class="hcard-info">
-                <span class="hcard-topic">{topicName(e.topic)}</span>
+                <span class="hcard-topic">{e.topicName}</span>
                 <span class="hcard-title">{e.title}</span>
                 {e.watchedAt && <time class="hcard-time" dateTime={e.watchedAt.toISOString()}>{fmt.format(e.watchedAt)}</time>}
               </span>

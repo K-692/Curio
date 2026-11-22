@@ -3,8 +3,9 @@
  *
  * Rules (blueprint §5.2):
  *  - Shuffled topic cycle: visit every eligible topic before a new cycle starts.
- *  - Fair across topics, not across videos: pick a topic first, then a random video in it.
- *  - Never more than MAX_STREAK consecutive items from one primary topic.
+ *  - Fair across topics, not across videos: pick a topic first, then a video in it
+ *    (the fetcher serves the most-trending unseen video of that topic).
+ *  - Never the same topic twice in a row (MAX_STREAK = 1).
  *  - Exclude already-queued and recently-watched videos while an unseen pool exists.
  *  - A topic with no candidate is marked exhausted for the cycle; the feed never stalls.
  *  - No engagement, watch-time or interest signal is used anywhere.
@@ -13,7 +14,7 @@ import { shuffle, secureRandom, type Rng } from './random';
 import type { FeedItem } from '../app/types';
 
 export const BATCH_SIZE = 10;
-export const MAX_STREAK = 2;
+export const MAX_STREAK = 1;
 export const LAST_TOPICS_KEPT = 6;
 
 export interface CycleState {
