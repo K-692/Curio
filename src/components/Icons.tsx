@@ -38,3 +38,4 @@ export const IconGoogle = ({ size = 18 }: { size?: number }) => (
 );
 export const IconRadar = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M12 3l8.6 6.2-3.3 10.1H6.7L3.4 9.2z" /><path d="M12 8l4 3-1.6 4.6H9.6L8 11z" /></svg>);
 export const IconBack = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M15 6l-6 6 6 6" /></svg>);
+export const IconShare = ({ size, ...p }: P) => (<svg {...base(size)} {...p}><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" /><path d="M12 3v12M7 8l5-5 5 5" /></svg>);

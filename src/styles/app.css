@@ -254,6 +254,18 @@ input[aria-invalid='true'] { border-style: dashed; }
 .iconbtn.round { width: 56px; height: 56px; border-color: var(--fg); background: var(--bg); }
 .iconbtn.round svg { width: 26px; height: 26px; }
 .iconbtn.round:hover:not(:disabled) { background: var(--fg); color: var(--bg); }
+/* Share on touch devices: a floating button over the right edge of the video. */
+.share-fab {
+  display: none;
+  position: absolute; z-index: 6; right: max(12px, env(safe-area-inset-right)); top: 50%; transform: translateY(-50%);
+  width: 48px; height: 48px; border-radius: 999px; place-items: center; cursor: pointer;
+  border: var(--line) solid #fff; background: rgb(0 0 0 / 0.45); color: #fff;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+@media (hover: none), (pointer: coarse), (max-width: 640px) {
+  .share-fab { display: grid; }
+}
+
 /* Up/down arrows are for desktop browsers only; touch devices swipe. */
 @media (hover: none), (pointer: coarse), (max-width: 640px) {
   .feed-controls { display: none; }

@@ -3,9 +3,10 @@ import type { FeedItem } from '../../app/types';
 import { loadFeedState, saveFeedState, nextBatch, rememberWatched, getCatalog, alignWithCatalog, type FeedState } from '../../services/feed';
 import { recordWatched } from '../../services/history';
 import { createStatsBuffer } from '../../services/stats';
+import { sharedIdFromPath, loadSharedItem, shareItem } from '../../services/share';
 import { BATCH_SIZE } from '../../services/engine';
 import { Slide } from './Slide';
-import { IconUp, IconDown, IconShuffle } from '../Icons';
+import { IconUp, IconDown, IconShuffle, IconShare } from '../Icons';
 
 /** Queue thresholds (blueprint §6). */
 const REFILL_AT = 5;
@@ -111,7 +112,14 @@ export function Feed({ uid }: { uid: string }) {
         const [s, catalog] = await Promise.all([loadFeedState(uid), getCatalog()]);
         alignWithCatalog(s, catalog.version);
         stateRef.current = s;
-        const restored = s.queue.filter((i) => i && i.id && i.provider);
+        let restored = s.queue.filter((i) => i && i.id && i.provider);
+        // Opened from a shared Curio link: play that video first, then continue the feed.
+        const sharedId = sharedIdFromPath();
+        if (sharedId) {
+          const shared = await loadSharedItem(sharedId);
+          if (shared) restored = [shared, ...restored.filter((i) => i.id !== shared.id)];
+          history.replaceState(null, '', import.meta.env.BASE_URL);
+        }
         itemsRef.current = restored;
         setItems(restored);
         if (restored.length) setStatus('ready');
@@ -247,6 +255,19 @@ export function Feed({ uid }: { uid: string }) {
     persist();
   }, [uid, persist]);
 
+  const [toast, setToast] = useState('');
+  const toastTimer = useRef<number | undefined>(undefined);
+  const onShare = useCallback(async () => {
+    const it = itemsRef.current[activeRef.current];
+    if (!it) return;
+    const r = await shareItem(it);
+    const msg = r === 'copied' ? 'Link copied — paste it anywhere' : r === 'failed' ? 'Could not share this video' : '';
+    if (!msg) return;
+    setToast(msg);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(''), 2500);
+  }, []);
+
   const upcoming = Math.max(0, items.length - 1 - active);
   const atEnd = active >= items.length;
 
@@ -316,8 +337,13 @@ export function Feed({ uid }: { uid: string }) {
       <div class="feed-controls" role="group" aria-label="Feed controls">
         <button type="button" class="iconbtn round" onClick={() => go(-1)} disabled={active === 0} aria-label="Previous video"><IconUp /></button>
         <button type="button" class="iconbtn round" onClick={() => go(1)} disabled={atEnd} aria-label="Next video"><IconDown /></button>
+        <button type="button" class="iconbtn round" onClick={onShare} disabled={atEnd} aria-label="Share this video"><IconShare /></button>
         <span class="sr-only" aria-live="polite">{`${upcoming} recommendations ready`}</span>
       </div>
+      {!atEnd && (
+        <button type="button" class="share-fab" onClick={onShare} aria-label="Share this video"><IconShare size={22} /></button>
+      )}
+      {toast && <div class="toast" role="status">{toast}</div>}
       {!online && <div class="toast" role="status">Offline — playing what's already queued</div>}
       {online && refilling && upcoming < 2 && !atEnd && <div class="toast" role="status">Loading more…</div>}
     </div>
